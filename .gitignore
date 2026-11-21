@@ -1,0 +1,22 @@
+# Kotlin / Gradle
+.gradle/
+.kotlin/
+build/
+*/build/
+
+# Android Studio
+.idea/
+*.iml
+local.properties
+.cxx/
+*.jks
+*.keystore
+keystore.properties
+
+# iOS (futuro)
+iosApp/Pods/
+iosApp/*.xcworkspace
+iosApp/**/DerivedData/
+
+# Sistema
+.DS_Store
