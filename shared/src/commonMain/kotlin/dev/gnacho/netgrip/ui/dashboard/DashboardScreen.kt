@@ -135,14 +135,14 @@ private fun SystemFieldRow(field: DashboardField) {
     ) {
         Text(
             field.label,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(0.9f),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
             field.value,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.weight(1.1f),
+            style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.End,
         )
     }

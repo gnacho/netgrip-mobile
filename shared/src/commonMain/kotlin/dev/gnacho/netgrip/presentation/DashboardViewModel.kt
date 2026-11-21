@@ -12,7 +12,7 @@ import kotlinx.serialization.json.JsonElement
 
 /**
  * Carga las lecturas basicas del spike: /api/system y /api/clients.
- * Los cuerpos se muestran como JSON hasta que existan DTOs verificados.
+ * Los cuerpos siguen como JsonElement y la UI los presenta con parsing tolerante.
  */
 class DashboardViewModel(private val api: NetGripApi) : ViewModel() {
 
