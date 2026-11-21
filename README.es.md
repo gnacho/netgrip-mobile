@@ -6,7 +6,9 @@ App móvil nativa para [NetGrip](https://github.com/gnacho/netgrip), un panel de
 
 ## Captura
 
-<img src="docs/images/netgrip-mobile-login.png" alt="Pantalla de conexión de NetGrip Mobile en Android" width="360">
+<img src="docs/images/netgrip-mobile-dashboard.png" alt="Panel de NetGrip Mobile en Android con datos simulados del router y sus clientes" width="360">
+
+*Datos simulados para la captura.*
 
 ## Estado
 

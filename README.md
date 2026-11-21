@@ -4,6 +4,12 @@
 
 NetGrip Mobile is a native mobile client for [NetGrip](https://github.com/gnacho/netgrip), an OpenWrt management panel. It uses Kotlin Multiplatform and Compose Multiplatform. Android is the first target, with iOS targets already configured.
 
+## Screenshot
+
+<img src="docs/images/netgrip-mobile-dashboard.png" alt="NetGrip Mobile dashboard on Android with simulated router and client data" width="360">
+
+*Simulated data for the screenshot.*
+
 ## Status
 
 This is the phase 1 read-only scaffold. The Android host tests and debug APK build pass. Emulator tests and validation against a real router are still pending.
