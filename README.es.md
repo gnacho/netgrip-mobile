@@ -4,6 +4,10 @@
 
 App móvil nativa para [NetGrip](https://github.com/gnacho/netgrip), un panel de gestión de routers OpenWrt. Usa Kotlin Multiplatform y Compose Multiplatform. Android es el primer objetivo, con los targets de iOS preparados desde el inicio.
 
+## Captura
+
+<img src="docs/images/netgrip-mobile-login.png" alt="Pantalla de conexión de NetGrip Mobile en Android" width="360">
+
 ## Estado
 
 Este es el scaffold de solo lectura de la fase 1. Los tests de host de Android y la compilación del APK de depuración pasan. Las pruebas en emulador y contra un router real siguen pendientes.
