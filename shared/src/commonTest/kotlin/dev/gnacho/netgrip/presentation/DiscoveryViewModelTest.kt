@@ -38,6 +38,7 @@ class DiscoveryViewModelTest {
             val viewModel = DiscoveryViewModel(discovery)
             assertNull(viewModel.selectedRouter)
             viewModel.search()
+            assertEquals(DiscoveryStatus.Searching, viewModel.status)
             testScheduler.advanceUntilIdle()
             assertEquals(listOf(router), viewModel.routers)
             assertEquals(DiscoveryStatus.Complete, viewModel.status)
@@ -71,6 +72,20 @@ class DiscoveryViewModelTest {
             viewModel.search()
             testScheduler.advanceUntilIdle()
             assertEquals(DiscoveryStatus.Error, viewModel.status)
+            assertEquals(emptyList(), viewModel.routers)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun emptyDiscoveryCompletesWithoutInventingRouters() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val viewModel = DiscoveryViewModel(FakeDiscovery(action = { emptyList() }))
+            viewModel.search()
+            testScheduler.advanceUntilIdle()
+            assertEquals(DiscoveryStatus.Complete, viewModel.status)
             assertEquals(emptyList(), viewModel.routers)
         } finally {
             Dispatchers.resetMain()

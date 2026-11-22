@@ -25,6 +25,8 @@ fun normalizeManualRouterUrl(input: String): String? {
     val authority = remainder.substringBefore('/')
     if (authority.isBlank() || authority.contains('@') || '?' in authority || '#' in authority) return null
 
+    if (!authority.startsWith('[') && authority.count { it == ':' } > 1) return null
+
     val port = when {
         authority.startsWith('[') -> {
             val closingBracket = authority.indexOf(']')

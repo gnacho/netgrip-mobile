@@ -28,7 +28,7 @@ class LoginTargetTest {
 
     @Test
     fun invalidManualUrlsAreRejected() {
-        listOf("", "ftp://router.local", "http://", "http://user@host", "http://host:0", "http://host:", "http://host:70000", "http://host/path").forEach {
+        listOf("", "ftp://router.local", "http://", "http://user@host", "http://host:0", "http://host:", "http://host:70000", "http://::1", "http://host/path").forEach {
             assertNull(normalizeManualRouterUrl(it), it)
         }
     }

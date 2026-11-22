@@ -1,87 +1,64 @@
 package dev.gnacho.netgrip.ui.login
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.unit.dp
+import dev.gnacho.netgrip.discovery.platformRouterDiscovery
+import dev.gnacho.netgrip.presentation.DiscoveryViewModel
 import dev.gnacho.netgrip.presentation.SessionViewModel
 import dev.gnacho.netgrip.presentation.UiState
 
+typealias PlatformBackHandler = @Composable (enabled: Boolean, onBack: () -> Unit) -> Unit
+
 @Composable
-fun LoginScreen(viewModel: SessionViewModel) {
-    var url by remember { mutableStateOf("") }
-    var username by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
+fun LoginScreen(viewModel: SessionViewModel, platformBackHandler: PlatformBackHandler = { _, _ -> }) {
+    val discoveryViewModel = remember { DiscoveryViewModel(platformRouterDiscovery()) }
+    var target by remember { mutableStateOf<LoginTarget?>(null) }
+    var showManualEntry by remember { mutableStateOf(false) }
 
-    Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
-    ) {
-        Text("NetGrip", style = MaterialTheme.typography.headlineMedium)
-
-        OutlinedTextField(
-            value = url,
-            onValueChange = { url = it },
-            label = { Text("URL del router (http:// o https://)") },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        OutlinedTextField(
-            value = username,
-            onValueChange = { username = it },
-            label = { Text("Usuario (vacío = root)") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        OutlinedTextField(
-            value = password,
-            onValueChange = { password = it },
-            label = { Text("Contraseña") },
-            visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        when (val state = viewModel.uiState) {
-            UiState.Loading ->
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
-            UiState.RouterUnreachable ->
-                Text("Router inalcanzable. Revisa la URL y la red.", color = MaterialTheme.colorScheme.error)
-            is UiState.RateLimited ->
-                Text(
-                    "Demasiados intentos. Reintenta en ${state.retryAfterSeconds ?: "?"} s.",
-                    color = MaterialTheme.colorScheme.error,
-                )
-            is UiState.Error ->
-                Text(state.message, color = MaterialTheme.colorScheme.error)
-            else -> Unit
+    platformBackHandler(target != null) {
+        if (viewModel.uiState !is UiState.Loading) {
+            viewModel.resetLoginState()
+            target = null
         }
+    }
 
-        Button(
-            onClick = { viewModel.login(url, username, password) },
-            enabled = url.isNotBlank() && password.isNotBlank() && viewModel.uiState !is UiState.Loading,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("Conectar")
-        }
+    Surface(color = dev.gnacho.netgrip.ui.theme.LoginBackground) {
+        target?.let { loginTarget ->
+            AccessScreen(
+                target = loginTarget,
+                viewModel = viewModel,
+                onBack = {
+                    viewModel.resetLoginState()
+                    target = null
+                },
+            )
+        } ?: WelcomeScreen(
+            status = discoveryViewModel.status,
+            isDiscoverySupported = discoveryViewModel.isSupported,
+            routers = discoveryViewModel.routers,
+            selectedRouter = discoveryViewModel.selectedRouter,
+            onSearch = discoveryViewModel::search,
+            onSelect = discoveryViewModel::select,
+            onConnect = { router ->
+                viewModel.resetLoginState()
+                target = LoginTarget.fromRouter(router)
+            },
+            onManual = { showManualEntry = true },
+        )
+    }
+
+    if (showManualEntry) {
+        ManualEntrySheet(
+            onDismiss = { showManualEntry = false },
+            onContinue = { url ->
+                viewModel.resetLoginState()
+                showManualEntry = false
+                target = LoginTarget(baseUrl = url)
+            },
+        )
     }
 }

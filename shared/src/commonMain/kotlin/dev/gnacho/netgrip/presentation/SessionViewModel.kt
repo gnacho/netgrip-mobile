@@ -45,7 +45,7 @@ class SessionViewModel(
     }
 
     fun login(baseUrl: String, username: String, password: String) {
-        val cleanUrl = baseUrl.trimEnd('/')
+        val cleanUrl = baseUrl.trim().trimEnd('/')
         val client = NetGripApi(platformEngine(), cleanUrl)
         uiState = UiState.Loading
         viewModelScope.launch {
@@ -62,6 +62,10 @@ class SessionViewModel(
                 is ApiResult.Unknown -> UiState.Error(result.message ?: "Error desconocido")
             }
         }
+    }
+
+    fun resetLoginState() {
+        if (uiState != UiState.Loading) uiState = UiState.Idle
     }
 
     fun logout() {
