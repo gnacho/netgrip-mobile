@@ -38,6 +38,14 @@ Before adding typed DTOs, capture real router responses and fix the fields with 
 
 `Idle`, `Loading`, `Ready`, `Error(message)`, `SessionExpired`, `RouterUnreachable`, and `RateLimited(retryAfter)`. `SessionExpired` forces an explicit return to login. The app must not remain in a loading state indefinitely.
 
+## On-demand router discovery
+
+Android can send the existing NetGrip fleet probe to UDP broadcast port 5141. The socket remains open for at most 3 seconds, accepts bounded JSON beacons, validates protocol version, type, ID, display fields, IPv4 address, port and a timestamp within 60 seconds, and deduplicates by ID, address and port. One pass retains at most 32 routers. No credentials are sent or tested during discovery.
+
+Beacons are unsigned, so every discovered router is labeled "Sin verificar". Selecting one only prepares the login form. Credentials are submitted only after the user presses Entrar. Discovered URLs start as `http://<address>:<port>` because the beacon carries no transport scheme and this phase does not probe HTTPS. The user can edit the URL before logging in. Manual HTTP and HTTPS entry remains available.
+
+iOS discovery is explicitly unsupported. The iOS UI offers manual entry and never returns simulated routers.
+
 ## Acceptance checks
 
 - G1: `./gradlew :shared:testAndroidHostTest` passes and `./gradlew :androidApp:assembleDebug` generates an APK.
