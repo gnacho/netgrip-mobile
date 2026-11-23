@@ -47,6 +47,8 @@ class DashboardViewModel(private val api: NetGripApi) : ViewModel() {
         ApiResult.Unreachable -> UiState.RouterUnreachable
         is ApiResult.RateLimited -> UiState.RateLimited(result.retryAfterSeconds)
         is ApiResult.HttpError -> UiState.Error("Error HTTP ${result.code}")
+        is ApiResult.CertificateChanged -> UiState.Error("El certificado de ${result.host} ha cambiado")
+        is ApiResult.CertificateUnsupported -> UiState.Error(result.message)
         is ApiResult.Unknown -> UiState.Error(result.message ?: "Error desconocido")
         else -> UiState.Error("Error desconocido")
     }

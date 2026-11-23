@@ -16,16 +16,15 @@ class SessionManager(private val storage: SecureStorage) {
     suspend fun lastUrl(): String? = storage.read(KEY_LAST_URL)
 
     /** Restaura la cookie guardada y la valida contra GET /api/me. */
-    suspend fun restore(api: NetGripApi, profileName: String = DEFAULT_PROFILE): Boolean {
-        val cookie = storage.read(cookieKey(profileName)) ?: return false
+    suspend fun restore(api: NetGripApi, profileName: String = DEFAULT_PROFILE): Boolean =
+        restoreWithResult(api, profileName) is ApiResult.Ok
+
+    suspend fun restoreWithResult(api: NetGripApi, profileName: String = DEFAULT_PROFILE): ApiResult<Unit>? {
+        val cookie = storage.read(cookieKey(profileName)) ?: return null
         api.restoreSessionCookie(cookie)
-        return when (api.me()) {
-            is ApiResult.Ok -> true
-            else -> {
-                storage.delete(cookieKey(profileName))
-                false
-            }
-        }
+        val result = api.me()
+        if (result !is ApiResult.Ok) storage.delete(cookieKey(profileName))
+        return result
     }
 
     suspend fun onLoginOk(api: NetGripApi, baseUrl: String, profileName: String = DEFAULT_PROFILE) {
