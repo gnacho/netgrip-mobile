@@ -39,6 +39,14 @@ class SessionManager(private val storage: SecureStorage) {
         storage.delete(KEY_LAST_URL)
     }
 
+    /**
+     * Olvida la cookie sin llamar al router: se usa cuando ya respondio 401 y
+     * no hay sesion que revocar. La ultima URL se conserva para reconectar.
+     */
+    suspend fun forgetSession(profileName: String = DEFAULT_PROFILE) {
+        storage.delete(cookieKey(profileName))
+    }
+
     private fun cookieKey(profileName: String) = "session.$profileName"
 
     companion object {

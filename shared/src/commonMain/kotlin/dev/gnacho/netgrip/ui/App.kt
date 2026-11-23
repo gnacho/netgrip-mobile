@@ -7,9 +7,9 @@ import dev.gnacho.netgrip.core.storage.SecureStorage
 import dev.gnacho.netgrip.discovery.RouterDiscovery
 import dev.gnacho.netgrip.discovery.platformRouterDiscovery
 import dev.gnacho.netgrip.presentation.SessionViewModel
-import dev.gnacho.netgrip.ui.dashboard.DashboardScreen
 import dev.gnacho.netgrip.ui.login.LoginScreen
 import dev.gnacho.netgrip.ui.login.PlatformBackHandler
+import dev.gnacho.netgrip.ui.shell.ShellScreen
 import dev.gnacho.netgrip.ui.theme.NetGripLoginTheme
 import dev.gnacho.netgrip.ui.theme.NetGripTheme
 
@@ -27,7 +27,10 @@ fun App(
     LaunchedEffect(Unit) { sessionViewModel.autoRestore() }
     if (sessionViewModel.loggedIn) {
         NetGripTheme {
-            DashboardScreen(sessionViewModel)
+            ShellScreen(
+                sessionViewModel = sessionViewModel,
+                platformBackHandler = platformBackHandler,
+            )
         }
     } else {
         NetGripLoginTheme {

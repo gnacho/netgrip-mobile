@@ -5,7 +5,18 @@ import dev.gnacho.netgrip.core.network.CertificateChangedException
 import dev.gnacho.netgrip.core.network.SelfSignedCertificatesUnsupportedException
 import dev.gnacho.netgrip.core.network.UnknownCertificateException
 import dev.gnacho.netgrip.core.network.certificateValidationException
+import dev.gnacho.netgrip.data.dto.AccessDto
+import dev.gnacho.netgrip.data.dto.BoardDto
+import dev.gnacho.netgrip.data.dto.ClientsDto
+import dev.gnacho.netgrip.data.dto.EthPortsDto
 import dev.gnacho.netgrip.data.dto.LoginRequest
+import dev.gnacho.netgrip.data.dto.MdnsDto
+import dev.gnacho.netgrip.data.dto.ModeDto
+import dev.gnacho.netgrip.data.dto.SelfUpdateDto
+import dev.gnacho.netgrip.data.dto.SystemDto
+import dev.gnacho.netgrip.data.dto.WanDto
+import dev.gnacho.netgrip.data.dto.WifiDto
+import dev.gnacho.netgrip.data.dto.WirelessRadioDto
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.HttpClientEngine
@@ -24,9 +35,10 @@ import io.ktor.serialization.kotlinx.json.json
 import kotlinx.io.IOException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.decodeFromJsonElement
 
 /**
- * Cliente minimo de la API REST de NetGrip para el spike de la fase 1.
+ * Cliente de la API REST de NetGrip para la app movil de solo lectura.
  *
  * Verificado en internal/server/server.go:
  *  - POST /api/login devuelve 204 y la sesion via Set-Cookie; 401 con
@@ -34,20 +46,27 @@ import kotlinx.serialization.json.JsonElement
  *    rpcd no responde.
  *  - GET /api/me devuelve 204 con sesion valida y 401 en caso contrario.
  *  - POST /api/logout revoca la sesion.
+ *  - El resto de lecturas exigen sesion y responden 502 cuando ubus falla.
  *
- * Los cuerpos de /api/system y /api/clients no estaban verificados al crear
- * este scaffold, por eso se leen como JsonElement hasta capturar respuestas
- * reales y definir DTOs tipados (ver docs/fase-1-spike.md).
+ * Todos los GET son de solo lectura. Los DTO viven en data/dto y son
+ * tolerantes: claves de mas se ignoran y los campos opcionales del router
+ * tienen valor por defecto.
  */
 class NetGripApi(
     engine: HttpClientEngine,
     private val baseUrl: String,
 ) {
 
+    private val json = Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+        coerceInputValues = true
+    }
+
     private val client = HttpClient(engine) {
         expectSuccess = false
         install(ContentNegotiation) {
-            json(Json { ignoreUnknownKeys = true })
+            json(json)
         }
     }
 
@@ -91,9 +110,39 @@ class NetGripApi(
         }
     }
 
-    suspend fun system(): ApiResult<JsonElement> = getJson("/api/system")
+    suspend fun board(): ApiResult<BoardDto> =
+        getData("/api/board") { json.decodeFromJsonElement(it) }
 
-    suspend fun clients(): ApiResult<JsonElement> = getJson("/api/clients")
+    suspend fun systemInfo(): ApiResult<SystemDto> =
+        getData("/api/system") { json.decodeFromJsonElement(it) }
+
+    suspend fun wan(): ApiResult<WanDto> =
+        getData("/api/wan") { json.decodeFromJsonElement(it) }
+
+    suspend fun mode(): ApiResult<ModeDto> =
+        getData("/api/mode") { json.decodeFromJsonElement(it) }
+
+    suspend fun clients(): ApiResult<ClientsDto> =
+        getData("/api/clients") { json.decodeFromJsonElement(it) }
+
+    suspend fun ethPorts(): ApiResult<EthPortsDto> =
+        getData("/api/ethports") { json.decodeFromJsonElement(it) }
+
+    suspend fun wifi(): ApiResult<WifiDto> =
+        getData("/api/wifi") { json.decodeFromJsonElement(it) }
+
+    /** /api/wireless responde un array desnudo, sin envoltorio. */
+    suspend fun wireless(): ApiResult<List<WirelessRadioDto>> =
+        getData("/api/wireless") { json.decodeFromJsonElement(it) }
+
+    suspend fun access(): ApiResult<AccessDto> =
+        getData("/api/access") { json.decodeFromJsonElement(it) }
+
+    suspend fun mdns(): ApiResult<MdnsDto> =
+        getData("/api/mdns") { json.decodeFromJsonElement(it) }
+
+    suspend fun selfUpdate(): ApiResult<SelfUpdateDto> =
+        getData("/api/selfupdate") { json.decodeFromJsonElement(it) }
 
     suspend fun logout(): ApiResult<Unit> = safeCall {
         try {
@@ -104,15 +153,16 @@ class NetGripApi(
         ApiResult.Ok(Unit)
     }
 
-    private suspend fun getJson(path: String): ApiResult<JsonElement> = safeCall {
-        val response = client.get("$baseUrl$path") { sessionHeader() }
-        when (response.status) {
-            HttpStatusCode.OK -> ApiResult.Ok(response.body<JsonElement>())
-            HttpStatusCode.Unauthorized -> ApiResult.Unauthorized
-            HttpStatusCode.TooManyRequests -> ApiResult.RateLimited(retryAfter(response))
-            else -> ApiResult.HttpError(response.status.value)
+    private suspend fun <T> getData(path: String, decode: (JsonElement) -> T): ApiResult<T> =
+        safeCall {
+            val response = client.get("$baseUrl$path") { sessionHeader() }
+            when (response.status) {
+                HttpStatusCode.OK -> ApiResult.Ok(decode(response.body<JsonElement>()))
+                HttpStatusCode.Unauthorized -> ApiResult.Unauthorized
+                HttpStatusCode.TooManyRequests -> ApiResult.RateLimited(retryAfter(response))
+                else -> ApiResult.HttpError(response.status.value)
+            }
         }
-    }
 
     private fun HttpRequestBuilder.sessionHeader() {
         sessionCookie?.let { header(HttpHeaders.Cookie, it) }

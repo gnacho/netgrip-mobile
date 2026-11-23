@@ -78,19 +78,19 @@ class NetGripApiTest {
     }
 
     @Test
-    fun systemDevuelveJson() = runTest {
+    fun systemDevuelveJsonTipado() = runTest {
         val engine = MockEngine {
             respond(
-                content = """{"hostname":"router","uptime":1234}""",
+                content = """{"uptime":1234,"load":[0.1,0.2,0.3],"memory":{"total":100,"free":10,"available":90},"root":{"total":50,"free":25}}""",
                 status = HttpStatusCode.OK,
                 headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
             )
         }
         val api = apiWith(engine)
         api.restoreSessionCookie("netgrip_http_session=abc123")
-        val result = api.system()
+        val result = api.systemInfo()
         assertIs<ApiResult.Ok<*>>(result)
-        assertTrue(result.value.toString().contains("hostname"))
+        assertEquals(1234L, (result.value as dev.gnacho.netgrip.data.dto.SystemDto).uptime)
     }
 
     @Test

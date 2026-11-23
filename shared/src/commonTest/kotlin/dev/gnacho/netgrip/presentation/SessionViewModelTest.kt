@@ -190,6 +190,36 @@ class SessionViewModelTest {
         }
     }
 
+    @Test
+    fun sessionExpiredClearsTheStoredCookieWithoutCallingTheRouter() = runSessionTest {
+        val storage = SessionStorage()
+        storage.save("last.url", "https://router.local:8080")
+        storage.save("session.default", "__Secure-netgrip_session=session")
+        val engine = successfulLoginEngine()
+        val factory = RecordingApiFactory(engine)
+        val viewModel = SessionViewModel(
+            storage = storage,
+            endpointProbe = FakeEndpointProbe(EndpointProbeResult.Unreachable),
+            apiFactory = factory,
+        )
+
+        viewModel.autoRestore()
+        testScheduler.advanceUntilIdle()
+        assertEquals(UiState.Ready, viewModel.uiState)
+        assertEquals("https://router.local:8080", viewModel.baseUrl)
+        val requestsBefore = engine.requestHistory.size
+
+        viewModel.onSessionExpired()
+        testScheduler.advanceUntilIdle()
+
+        assertNull(viewModel.api)
+        assertNull(viewModel.baseUrl)
+        assertEquals(UiState.Idle, viewModel.uiState)
+        assertNull(storage.data["session.default"])
+        assertEquals("https://router.local:8080", storage.data["last.url"])
+        assertEquals(requestsBefore, engine.requestHistory.size)
+    }
+
     private fun TestScope.successfulLoginEngine(): MockEngine {
         val config = MockEngineConfig()
         config.dispatcher = StandardTestDispatcher(testScheduler)
