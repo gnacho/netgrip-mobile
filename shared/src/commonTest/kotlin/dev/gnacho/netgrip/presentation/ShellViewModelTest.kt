@@ -62,6 +62,10 @@ private val DEMO_ACCESS = """{"panel":{"http_port":8090,"https_enabled":true,"fo
 
 private val DEMO_MDNS = """{"installed":true,"enabled":true,"running":true,"domain":"casa.local"}"""
 
+private val DEMO_HISTORY = """{"entries":[
+    {"ts":1732300000,"rx":1000,"tx":2000,"load":0.4,"clients":2},
+    {"ts":1732300300,"rx":31000,"tx":8000,"load":0.5,"clients":2}]}"""
+
 private val DEMO_SELFUPDATE = """{"current":"v0.79.0","latest":"v0.79.0","available":false,"notes":""}"""
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -77,6 +81,7 @@ class ShellViewModelTest {
                 "/api/mode" -> ok(DEMO_MODE)
                 "/api/clients" -> ok(DEMO_CLIENTS)
                 "/api/ethports" -> ok(DEMO_PORTS)
+                "/api/history" -> ok(DEMO_HISTORY)
                 else -> notFound()
             }
         }
@@ -95,7 +100,8 @@ class ShellViewModelTest {
         assertEquals("router", state.mode?.effectiveRole)
         assertEquals(2, state.clients.size)
         assertEquals("lan4", state.ports.last().name)
-        assertEquals(6, engine.requestHistory.size)
+        assertEquals(2, state.history.size)
+        assertEquals(7, engine.requestHistory.size)
     }
 
     @Test
@@ -110,7 +116,7 @@ class ShellViewModelTest {
 
         assertTrue(viewModel.sessionExpired.value)
         assertEquals("La sesión ha caducado", viewModel.panel.value.error)
-        assertEquals(6, engine.requestHistory.size)
+        assertEquals(7, engine.requestHistory.size)
     }
 
     @Test
@@ -140,7 +146,7 @@ class ShellViewModelTest {
         viewModel.ensurePanel()
         testScheduler.advanceUntilIdle()
 
-        assertEquals(6, engine.requestHistory.size)
+        assertEquals(7, engine.requestHistory.size)
     }
 
     @Test

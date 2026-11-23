@@ -1,26 +1,29 @@
 package dev.gnacho.netgrip.ui.shell
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -28,6 +31,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -52,14 +56,22 @@ import dev.gnacho.netgrip.domain.clients.ReservationAction
 import dev.gnacho.netgrip.domain.format.Formats
 import dev.gnacho.netgrip.presentation.ClientsState
 import dev.gnacho.netgrip.presentation.ShellViewModel
-import dev.gnacho.netgrip.ui.common.Badge
-import dev.gnacho.netgrip.ui.common.BadgeTone
 import dev.gnacho.netgrip.ui.common.CardDivider
-import dev.gnacho.netgrip.ui.common.EmptyBox
+import dev.gnacho.netgrip.ui.common.EmptyStateView
 import dev.gnacho.netgrip.ui.common.ErrorBox
+import dev.gnacho.netgrip.ui.common.GroupLabel
+import dev.gnacho.netgrip.ui.common.IconTile
 import dev.gnacho.netgrip.ui.common.InfoRow
 import dev.gnacho.netgrip.ui.common.InlineWarning
 import dev.gnacho.netgrip.ui.common.LoadingBox
+import dev.gnacho.netgrip.ui.common.MeterBar
+import dev.gnacho.netgrip.ui.common.NetGripIcons
+import dev.gnacho.netgrip.ui.common.Pill
+import dev.gnacho.netgrip.ui.common.SearchField
+import dev.gnacho.netgrip.ui.common.Tone
+import dev.gnacho.netgrip.ui.common.deviceIcon
+import dev.gnacho.netgrip.ui.theme.MonoStyle
+import dev.gnacho.netgrip.ui.theme.netGrip
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -101,30 +113,39 @@ fun ClientsScreen(viewModel: ShellViewModel) {
                             .padding(start = 16.dp, top = 12.dp, end = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        OutlinedTextField(
+                        SearchField(
                             value = query,
                             onValueChange = { query = it },
+                            placeholder = "Buscar por nombre, IP o MAC",
                             modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            placeholder = { Text("Buscar por nombre, IP o MAC") },
                         )
                         Text(
                             "${filtered.size} de ${state.clients.size} clientes",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.netGrip.faint,
                         )
                     }
                     when {
-                        state.clients.isEmpty() -> EmptyBox("No hay clientes conectados.")
-                        filtered.isEmpty() -> EmptyBox("Ningún cliente coincide con la búsqueda.")
+                        state.clients.isEmpty() -> EmptyStateView(
+                            title = "No hay clientes conectados",
+                            body = "Cuando un dispositivo se conecte a la red aparecerá aquí.",
+                            icon = NetGripIcons.Clients,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        filtered.isEmpty() -> EmptyStateView(
+                            title = "Ningún cliente coincide",
+                            body = "Prueba con otro nombre, IP o MAC.",
+                            icon = NetGripIcons.Search,
+                            modifier = Modifier.fillMaxSize(),
+                        )
                         else -> LazyColumn(
                             modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            contentPadding = PaddingValues(start = 12.dp, top = 10.dp, end = 12.dp, bottom = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
                             state.error?.let { message -> item { InlineWarning(message) } }
                             items(filtered, key = { "${it.mac}-${it.ip}" }) { client ->
-                                ClientCard(
+                                ClientRow(
                                     client = client,
                                     busy = state.busyMac == client.mac.lowercase(),
                                 ) { selectedMac = client.mac }
@@ -143,49 +164,62 @@ fun ClientsScreen(viewModel: ShellViewModel) {
     }
 
     selected?.let { client ->
-        ModalBottomSheet(onDismissRequest = { selectedMac = null }) {
+        ModalBottomSheet(
+            onDismissRequest = { selectedMac = null },
+            containerColor = MaterialTheme.colorScheme.surface,
+            dragHandle = null,
+        ) {
             ClientDetail(client = client, state = state, viewModel = viewModel)
         }
     }
 }
 
 @Composable
-private fun ClientCard(client: ClientDto, busy: Boolean, onClick: () -> Unit) {
-    Card(
+private fun ClientRow(client: ClientDto, busy: Boolean, onClick: () -> Unit) {
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        ),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(
-                client.name.ifBlank { client.mac },
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Medium,
-            )
-            Text(
-                listOfNotNull(
-                    ClientLabels.type(client.type),
-                    client.ip,
-                    Formats.signal(client.signal),
-                ).joinToString(" · "),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            val flags = ClientLabels.flags(client)
-            if (busy || flags.isNotEmpty()) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (busy) Badge("Aplicando cambio", BadgeTone.WARN)
-                    flags.take(3).forEach { flag ->
-                        Badge(flag, if (flag.contains("Bloque") || flag.contains("agotada")) BadgeTone.DANGER else BadgeTone.NEUTRAL)
-                    }
+            IconTile(deviceIcon(client.deviceType), connectionTone(client), size = 38)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    client.name.ifBlank { client.mac },
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                )
+                Text(
+                    listOfNotNull(
+                        ClientLabels.type(client.type),
+                        client.ip,
+                        Formats.signal(client.signal),
+                    ).joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
+            }
+            when {
+                busy -> CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                client.blocked -> Pill("Bloqueado", Tone.DANGER, dot = false)
+                else -> ClientLabels.flags(client).firstOrNull()?.let { flag ->
+                    Pill(flag, Tone.NEUTRAL, dot = false)
                 }
             }
+            Icon(
+                NetGripIcons.ChevronRight,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.netGrip.faint,
+            )
         }
     }
 }
@@ -203,29 +237,43 @@ private fun ClientDetail(client: ClientDto, state: ClientsState, viewModel: Shel
         modifier = Modifier
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
-            .padding(start = 20.dp, end = 20.dp, bottom = 28.dp),
+            .padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text(
-            client.name.ifBlank { client.mac },
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold,
-        )
-        ClientLabels.flags(client).takeIf { it.isNotEmpty() }?.let { flags ->
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            IconTile(deviceIcon(deviceTypeOf(client, state)), connectionTone(client), size = 48)
+            Column(Modifier.weight(1f)) {
+                Text(
+                    client.name.ifBlank { client.mac },
+                    style = MaterialTheme.typography.headlineSmall,
+                )
+                Text(client.mac, style = MonoStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        val flags = ClientLabels.flags(client)
+        if (flags.isNotEmpty() || busy) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (busy) Pill("Aplicando cambio", Tone.WARN)
                 flags.forEach { flag ->
-                    Badge(flag, if (flag.contains("Bloque") || flag.contains("agotada")) BadgeTone.DANGER else BadgeTone.NEUTRAL)
+                    Pill(
+                        flag,
+                        if (flag.contains("Bloque") || flag.contains("agotada")) Tone.DANGER else Tone.NEUTRAL,
+                        dot = false,
+                    )
                 }
             }
         }
         CardDivider()
         InfoRow("Tipo", ClientLabels.type(client.type))
         InfoRow("Tipo de dispositivo", DeviceTypes.label(deviceTypeOf(client, state)))
-        InfoRow("Dirección IP", client.ip?.takeIf { it.isNotBlank() } ?: "Sin dirección")
-        InfoRow("MAC", client.mac)
-        client.iface?.takeIf { it.isNotBlank() }?.let { InfoRow("Interfaz", it) }
+        InfoRow("Dirección IP", client.ip?.takeIf { it.isNotBlank() } ?: "Sin dirección", mono = true)
+        InfoRow("MAC", client.mac, mono = true)
+        client.iface?.takeIf { it.isNotBlank() }?.let { InfoRow("Interfaz", it, mono = true) }
         Formats.signal(client.signal)?.let { InfoRow("Señal", it) }
-        InfoRow("Tráfico", "Subida ${Formats.bytes(client.rxBytes)} · Bajada ${Formats.bytes(client.txBytes)}")
+        TrafficDetail(client)
         InfoRow("Bloqueo", ClientBlockRules.stateLabel(client))
         InfoRow("Reserva DHCP", if (client.reserved) "IP fija reservada" else "Sin reserva")
         ClientLabels.leaseSource(client)?.let { InfoRow("Concesión", it) }
@@ -238,25 +286,28 @@ private fun ClientDetail(client: ClientDto, state: ClientsState, viewModel: Shel
                 "Cuota",
                 "${Formats.bytes(client.quotaUsed)} de ${Formats.bytes(client.quotaLimit)}",
             )
+            MeterBar(
+                fraction = (client.quotaUsed.toFloat() / client.quotaLimit.toFloat()).coerceIn(0f, 1f),
+                color = if (client.quotaExceeded) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+            )
         }
         if (client.blockedOn.isNotEmpty()) {
             InfoRow("Bloqueado en", blocks.joinToString(", ") { ClientBlockRules.bandLabel(it) })
         }
         client.parentalNext?.takeIf { it.isNotBlank() }?.let { InfoRow("Próximo bloqueo parental", it) }
 
-        CardDivider()
-        Text(
-            "Acciones",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
+        GroupLabel("Acciones")
         if (busy) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                CircularProgressIndicator(modifier = Modifier.size(18.dp))
-                Text("Aplicando cambio en el router", style = MaterialTheme.typography.bodySmall)
+                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                Text(
+                    "Aplicando cambio en el router",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
 
@@ -264,7 +315,12 @@ private fun ClientDetail(client: ClientDto, state: ClientsState, viewModel: Shel
             onClick = { showEdit = true },
             enabled = !busy,
             modifier = Modifier.fillMaxWidth(),
-        ) { Text("Editar nombre y tipo") }
+            shape = RoundedCornerShape(12.dp),
+        ) {
+            Icon(NetGripIcons.Pencil, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Editar nombre y tipo")
+        }
 
         if (!client.self) {
             if (blocks.isNotEmpty() || client.blocked) {
@@ -273,7 +329,10 @@ private fun ClientDetail(client: ClientDto, state: ClientsState, viewModel: Shel
                         onClick = { viewModel.unblockClient(client, band) },
                         enabled = !busy,
                         modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
                     ) {
+                        Icon(NetGripIcons.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
                         Text("Desbloquear en ${ClientBlockRules.bandLabel(band).lowercase()}")
                     }
                 }
@@ -283,26 +342,50 @@ private fun ClientDetail(client: ClientDto, state: ClientsState, viewModel: Shel
                     onClick = { showBlock = true },
                     enabled = !busy,
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Bloquear cliente") }
+                    shape = RoundedCornerShape(12.dp),
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError,
+                    ),
+                ) {
+                    Icon(NetGripIcons.Ban, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Bloquear cliente")
+                }
             }
             when (reservation) {
                 is ReservationAction.SetCurrentIp -> OutlinedButton(
                     onClick = { showReserve = true },
                     enabled = !busy,
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Fijar la IP actual (${reservation.ip})") }
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Icon(NetGripIcons.Pin, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Fijar la IP actual (${reservation.ip})")
+                }
                 ReservationAction.Remove -> OutlinedButton(
                     onClick = { showReserve = true },
                     enabled = !busy,
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Quitar la reserva de IP") }
+                    shape = RoundedCornerShape(12.dp),
+                ) {
+                    Icon(NetGripIcons.Pin, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Quitar la reserva de IP")
+                }
                 ReservationAction.Unavailable -> Unit
             }
             OutlinedButton(
                 onClick = { viewModel.wakeOnLan(client) },
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Despertar (Wake on LAN)") }
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Icon(NetGripIcons.Zap, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Despertar (Wake on LAN)")
+            }
         } else {
             Text(
                 "Este dispositivo administra el router: no se ofrece bloquearlo ni despertarlo.",
@@ -365,9 +448,50 @@ private fun ClientDetail(client: ClientDto, state: ClientsState, viewModel: Shel
     }
 }
 
+/**
+ * Reparto del trafico acumulado del cliente. La API no guarda serie temporal
+ * por cliente, solo los contadores de la conexion actual.
+ */
+@Composable
+private fun TrafficDetail(client: ClientDto) {
+    val rx = client.rxBytes.coerceAtLeast(0)
+    val tx = client.txBytes.coerceAtLeast(0)
+    val total = (rx + tx).coerceAtLeast(1)
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Tráfico de esta conexión", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Total ${Formats.bytes(rx + tx)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(NetGripIcons.ArrowDown, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.netGrip.chartRx)
+            Text("Subida", Modifier.width(52.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Box(Modifier.weight(1f)) {
+                MeterBar(rx.toFloat() / total, MaterialTheme.netGrip.chartRx)
+            }
+            Text(Formats.bytes(rx), style = MaterialTheme.typography.labelMedium)
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(NetGripIcons.ArrowUp, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.netGrip.chartTx)
+            Text("Bajada", Modifier.width(52.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Box(Modifier.weight(1f)) {
+                MeterBar(tx.toFloat() / total, MaterialTheme.netGrip.chartTx)
+            }
+            Text(Formats.bytes(tx), style = MaterialTheme.typography.labelMedium)
+        }
+        Spacer(Modifier.size(2.dp))
+    }
+}
+
 private fun deviceTypeOf(client: ClientDto, state: ClientsState): String {
     val stored = ClientMetaRules.currentDeviceType(state.meta, client.mac)
     return stored.ifBlank { client.deviceType.orEmpty() }
+}
+
+private fun connectionTone(client: ClientDto): Tone = when (client.type) {
+    "wifi5" -> Tone.ACCENT
+    "wifi24" -> Tone.SUCCESS
+    "cable" -> Tone.TEAL
+    else -> Tone.NEUTRAL
 }
 
 @Composable
@@ -421,6 +545,12 @@ private fun EditClientDialog(
                                 selected = deviceType == key,
                                 onClick = { deviceType = key },
                             )
+                            Icon(
+                                deviceIcon(key),
+                                contentDescription = null,
+                                modifier = Modifier.padding(start = 8.dp).size(18.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                             Text(
                                 DeviceTypes.label(key),
                                 modifier = Modifier.padding(start = 8.dp),
@@ -455,6 +585,7 @@ private fun BlockClientDialog(
     val cable = ClientBlockRules.isCable(client)
     AlertDialog(
         onDismissRequest = onDismiss,
+        icon = { IconTile(NetGripIcons.Ban, Tone.DANGER) },
         title = { Text("Bloquear ${client.name.ifBlank { client.mac }}") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -489,7 +620,13 @@ private fun BlockClientDialog(
             }
         },
         confirmButton = {
-            Button(onClick = { onConfirm(band) }) { Text("Bloquear") }
+            Button(
+                onClick = { onConfirm(band) },
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError,
+                ),
+            ) { Text("Bloquear") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancelar") }
@@ -507,6 +644,7 @@ private fun ReserveClientDialog(
     val fix = action is ReservationAction.SetCurrentIp
     AlertDialog(
         onDismissRequest = onDismiss,
+        icon = { IconTile(NetGripIcons.Pin, Tone.ACCENT) },
         title = { Text(if (fix) "Fijar la IP actual" else "Quitar la reserva de IP") },
         text = {
             Text(

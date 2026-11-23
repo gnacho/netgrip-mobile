@@ -42,6 +42,17 @@ object Formats {
     /** Senal wifi a "-62 dBm", o null si no hay dato util. */
     fun signal(dbm: Int?): String? = if (dbm == null || dbm == 0) null else "$dbm dBm"
 
+    /** Tasa de transferencia a "1,2 MiB/s". */
+    fun rate(bytesPerSecond: Double): String {
+        if (bytesPerSecond <= 0) return "0 B/s"
+        return magnitude(bytesPerSecond, 1024.0, listOf("B", "KiB", "MiB", "GiB", "TiB")) + "/s"
+    }
+
+    /** Hora local de un instante en segundos, o cadena vacia si no hay dato. */
+    fun clock(epochSeconds: Long): String =
+        if (epochSeconds <= 0) "" else formatClock(epochSeconds)
+
+
     /** Porcentaje redondeado, 0 si el total no es valido. */
     fun percent(part: Long, total: Long): Int =
         if (total <= 0) 0 else ((part * 100.0) / total).roundToLong().toInt()
