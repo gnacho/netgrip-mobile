@@ -121,4 +121,28 @@ class NetGripApiReadTest {
         api.mdns()
         assertTrue(cookies.single()?.contains("netgrip_http_session=abc123") == true)
     }
+
+    @Test
+    fun elHistoricoLlegaComoEntradasDelAnillo() = runTest {
+        val api = apiWith(
+            jsonHandler(
+                "/api/history",
+                """{"entries":[{"ts":1700000000,"rx":1000,"tx":2000,"load":0.5,"clients":3},{"ts":1700000300,"rx":4000,"tx":2600,"load":0.25,"clients":4}]}""",
+            ),
+        )
+        val result = api.history()
+        assertIs<ApiResult.Ok<dev.gnacho.netgrip.data.dto.HistoryDto>>(result)
+        assertEquals(2, result.value.entries.size)
+        assertEquals(1700000300L, result.value.entries.last().ts)
+        assertEquals(4000L, result.value.entries.last().rx)
+        assertEquals(4, result.value.entries.last().clients)
+    }
+
+    @Test
+    fun unHistoricoVacioSeLeeSinError() = runTest {
+        val api = apiWith(jsonHandler("/api/history", """{"entries":[]}"""))
+        val result = api.history()
+        assertIs<ApiResult.Ok<dev.gnacho.netgrip.data.dto.HistoryDto>>(result)
+        assertTrue(result.value.entries.isEmpty())
+    }
 }

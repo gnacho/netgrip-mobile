@@ -26,6 +26,7 @@ unknown keys are ignored and optional router fields have defaults.
 | `GET /api/access` | `panel`, `luci`, `ssh` port and exposure state |
 | `GET /api/mdns` | `installed`, `enabled`, `running`, `domain` |
 | `GET /api/selfupdate` | `current`, `latest`, `available`, `notes`, `check_error?` |
+| `GET /api/history` | `entries[]` con `ts` (s), `rx` y `tx` acumulados del puente LAN, `load` y `clients`. Anillo de 288 muestras cada 5 min |
 
 `role` is optional in older firmware. The app falls back to `ap` when `mode` is
 `ap`, and to `router` otherwise, the same rule the web panel uses.
@@ -58,6 +59,43 @@ is reported as an error instead of crashing.
 Each tab loads its reads the first time it opens and on demand with the refresh
 action. There is no polling. Any `401` closes the session once through
 `SessionViewModel.onSessionExpired()` and returns to login without retrying.
+
+## Visual system
+
+The Compose theme mirrors the web panel instead of defining a separate identity:
+the light and dark palettes, the 16 dp cards with a 1 dp border and a soft
+shadow, the 12 dp icon tiles, the pills with a status dot, the segmented
+control, the 22/28 page title and the 11/16 eyebrow come from
+`app/src/index.css` and `design-rev2.md`.
+
+Material 3 has no success, warning or faint roles, so they live in
+`NetGripPalette`, provided through `LocalNetGripPalette` and read as
+`MaterialTheme.netGrip`.
+
+Icons are the Lucide set the web panel uses. `ui/common/NetGripIcons.kt` holds 52
+`ImageVector`s generated from the original SVG path data with
+`PathParser`, so the silhouette and the 2 px stroke match without pulling a
+30 MB icon pack. `deviceIcon()` maps the 21 device types to the same icons as
+`app/src/components/clients/catalog.ts`.
+
+Navigation follows the panel: a grouped side menu (`Resumen`, `Tu red`,
+`Sistema`) that is permanent at 1000 dp or more, a 76 dp rail from 720 dp and a
+modal drawer on phones. The drawer footer carries the health pill, the theme
+selector (`Auto`, `Claro`, `Oscuro`) and logout. The theme mode is stored in the
+same encrypted storage as the session and applied to the system bars.
+
+## Charts
+
+The Panel draws the LAN bridge traffic from `/api/history`. The router stores
+accumulated counters every five minutes, so `TrafficSeries` derives rates from
+consecutive deltas, ignores negative deltas (counter reset) and recalculates the
+totals for the selected window. The chart is a Compose `Canvas`: 25/50/75/100 %
+grid, midpoint-smoothed curves, 12 % area fill, series colours from the theme
+and a touch crosshair with the values of the selected sample. Windows are 1, 6
+and 24 hours.
+
+Client detail has no time series available, so it shows the traffic of the
+current connection as a split bar between upload and download.
 
 ## Gates
 

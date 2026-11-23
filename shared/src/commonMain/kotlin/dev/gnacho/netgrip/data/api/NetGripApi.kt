@@ -14,6 +14,7 @@ import dev.gnacho.netgrip.data.dto.ClientReserveRequest
 import dev.gnacho.netgrip.data.dto.ClientWriteResponseDto
 import dev.gnacho.netgrip.data.dto.ClientsDto
 import dev.gnacho.netgrip.data.dto.EthPortsDto
+import dev.gnacho.netgrip.data.dto.HistoryDto
 import dev.gnacho.netgrip.data.dto.LoginRequest
 import dev.gnacho.netgrip.data.dto.MdnsDto
 import dev.gnacho.netgrip.data.dto.ModeDto
@@ -200,6 +201,10 @@ class NetGripApi(
     /** POST /api/wol: paquete magico, no persiste nada en el router. */
     suspend fun wakeOnLan(mac: String): ApiResult<WolResponseDto> =
         postJson("/api/wol", WolRequest(mac)) { json.decodeFromJsonElement(it) }
+    /** Historico de 24 h del puente LAN. Contadores acumulados, no tasas. */
+    suspend fun history(): ApiResult<HistoryDto> =
+        getData("/api/history") { json.decodeFromJsonElement(it) }
+
 
     suspend fun logout(): ApiResult<Unit> = safeCall {
         try {

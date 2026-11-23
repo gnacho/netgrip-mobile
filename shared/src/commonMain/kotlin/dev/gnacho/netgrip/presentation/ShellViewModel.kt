@@ -11,6 +11,7 @@ import dev.gnacho.netgrip.data.dto.ClientMetaEntryDto
 import dev.gnacho.netgrip.data.dto.ClientMetaDto
 import dev.gnacho.netgrip.data.dto.ClientsDto
 import dev.gnacho.netgrip.data.dto.EthPortDto
+import dev.gnacho.netgrip.data.dto.HistoryEntryDto
 import dev.gnacho.netgrip.data.dto.MdnsDto
 import dev.gnacho.netgrip.data.dto.ModeDto
 import dev.gnacho.netgrip.data.dto.SelfUpdateDto
@@ -46,6 +47,7 @@ data class PanelState(
     val mode: ModeDto? = null,
     val clients: List<ClientDto> = emptyList(),
     val ports: List<EthPortDto> = emptyList(),
+    val history: List<HistoryEntryDto> = emptyList(),
 )
 
 /** Estado de la pestana Clientes. */
@@ -155,6 +157,7 @@ class ShellViewModel(private val api: NetGripApi) : ViewModel() {
                 val mode = async { api.mode() }
                 val clients = async { api.clients() }
                 val ports = async { api.ethPorts() }
+                val history = async { api.history() }
                 merge(board.await()) { next = next.copy(board = it) }
                 merge(system.await()) { next = next.copy(system = it) }
                 merge(wan.await()) { next = next.copy(wan = it) }
@@ -164,6 +167,9 @@ class ShellViewModel(private val api: NetGripApi) : ViewModel() {
                 }
                 merge(ports.await()) { value ->
                     next = next.copy(ports = value.ports)
+                }
+                merge(history.await()) { value ->
+                    next = next.copy(history = value.entries)
                 }
             }
             _panel.value = next.copy(error = failure)

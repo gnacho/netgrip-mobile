@@ -176,4 +176,29 @@ class ClientActionsTest {
         assertTrue(ClientActionMessages.rolledBack().contains("revirtió"))
         assertTrue(ClientActionMessages.wolSent().contains("enviado"))
     }
+
+    @Test
+    fun elFormularioPrecargaElNombreDelClienteSiNoHayOverride() {
+        val target = client(mac = "9c:b6:d0:12:ab:77").copy(name = "phone", deviceType = "phone")
+        assertEquals("phone", ClientMetaRules.effectiveName(emptyMap(), target))
+        assertEquals("phone", ClientMetaRules.effectiveDeviceType(emptyMap(), target))
+    }
+
+    @Test
+    fun elOverrideGuardadoGanaSobreLoQueAnunciaElCliente() {
+        val target = client(mac = "9c:b6:d0:12:ab:77").copy(name = "phone", deviceType = "phone")
+        val meta = mapOf(
+            "9c:b6:d0:12:ab:77" to ClientMetaEntryDto(name = "Móvil de casa", deviceType = "tablet"),
+        )
+        assertEquals("Móvil de casa", ClientMetaRules.effectiveName(meta, target))
+        assertEquals("tablet", ClientMetaRules.effectiveDeviceType(meta, target))
+    }
+
+    @Test
+    fun unOverrideParcialNoBorraElOtroCampo() {
+        val target = client(mac = "9c:b6:d0:12:ab:77").copy(name = "phone", deviceType = "phone")
+        val meta = mapOf("9c:b6:d0:12:ab:77" to ClientMetaEntryDto(name = "Solo nombre", deviceType = ""))
+        assertEquals("Solo nombre", ClientMetaRules.effectiveName(meta, target))
+        assertEquals("phone", ClientMetaRules.effectiveDeviceType(meta, target))
+    }
 }

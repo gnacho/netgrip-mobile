@@ -6,15 +6,23 @@ NetGrip Mobile is a native mobile client for [NetGrip](https://github.com/gnacho
 
 ## Screenshot
 
-<img src="docs/images/netgrip-mobile-dashboard.png" alt="NetGrip Mobile read-only panel on Android with router, health, WAN and resource data" width="360">
+<img src="docs/images/netgrip-mobile-dashboard.png" alt="NetGrip Mobile panel on Android with the health gauge, a 24 hour traffic chart and the router card" width="360">
 
 *Simulated data for the screenshot.*
 
 ## Status
 
-This is the read-only shell plus the first safe client actions. The client tab can rename a device, set its type, block or unblock it per band, pin or remove its current IP and send a Wake on LAN packet. Every write asks for confirmation, shows the server error and re-reads the router state. The rest of the app stays read-only. The Android host tests and debug APK build pass. Emulator tests and validation against a real router are still pending.
+This is the read-only shell plus the first safe client actions. The client tab can rename a device, set its type, block or unblock it per band, pin or remove its current IP and send a Wake on LAN packet. Every write asks for confirmation, shows the server error and re-reads the router state. The rest of the app stays read-only. 188 Android host tests and the debug APK build pass. Emulator tests are done against a mock API. Validation against a real router is still pending.
 
 The shell is described in [docs/readonly-shell.md](docs/readonly-shell.md) and the client writes in [docs/client-writes.md](docs/client-writes.md).
+
+## Interface
+
+The app reproduces the NetGrip web visual system instead of inventing a second one: the same light and dark palettes, spacing, radii, card borders, pills and typography scale, taken from `app/src/index.css` of the web panel. Navigation is a grouped side menu, a permanent drawer on wide screens, a rail on tablets and a modal drawer on phones. The three theme modes are stored on the device.
+
+Icons are the Lucide vectors the web panel uses, generated as Compose `ImageVector`s from the original SVG path data. No icon pack is bundled, so the look matches without adding tens of megabytes.
+
+The Panel draws a real traffic chart from `GET /api/history`, which the router samples every five minutes and keeps for 24 hours. The chart shows rates derived from the accumulated counters, with a 1, 6 or 24 hour window and a touch crosshair. Client detail shows the traffic of the current connection as a split bar, because the API keeps no per-client series.
 
 ## Requirements
 

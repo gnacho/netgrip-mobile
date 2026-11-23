@@ -109,6 +109,18 @@ object ClientMetaRules {
         val key = MacAddress.normalize(mac) ?: return ""
         return meta[key]?.name.orEmpty()
     }
+
+    /**
+     * Nombre que debe precargar el formulario. Si no hay override se parte del
+     * que anuncia el cliente: abrir el dialogo y guardar solo el tipo no debe
+     * borrar el nombre.
+     */
+    fun effectiveName(meta: Map<String, ClientMetaEntryDto>, client: ClientDto): String =
+        currentName(meta, client.mac).ifBlank { client.name }
+
+    /** Tipo que debe precargar el formulario, con el mismo respaldo. */
+    fun effectiveDeviceType(meta: Map<String, ClientMetaEntryDto>, client: ClientDto): String =
+        currentDeviceType(meta, client.mac).ifBlank { client.deviceType.orEmpty() }
 }
 
 /** Reglas de bloqueo y desbloqueo por bandas. */
