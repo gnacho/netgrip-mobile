@@ -18,6 +18,10 @@ fun App(
     secureStorage: SecureStorage,
     platformBackHandler: PlatformBackHandler = { _, _ -> },
     routerDiscovery: RouterDiscovery = platformRouterDiscovery(),
+    isLocalNetworkGranted: () -> Boolean = { true },
+    requestLocalNetworkPermission: (callback: (Boolean) -> Unit) -> Unit = { callback ->
+        callback(true)
+    },
 ) {
     val sessionViewModel = remember { SessionViewModel(secureStorage) }
     LaunchedEffect(Unit) { sessionViewModel.autoRestore() }
@@ -27,7 +31,13 @@ fun App(
         }
     } else {
         NetGripLoginTheme {
-            LoginScreen(sessionViewModel, platformBackHandler, routerDiscovery)
+            LoginScreen(
+                viewModel = sessionViewModel,
+                platformBackHandler = platformBackHandler,
+                routerDiscovery = routerDiscovery,
+                isLocalNetworkGranted = isLocalNetworkGranted,
+                requestLocalNetworkPermission = requestLocalNetworkPermission,
+            )
         }
     }
 }

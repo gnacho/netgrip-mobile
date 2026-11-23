@@ -12,7 +12,13 @@ import kotlinx.coroutines.launch
 
 enum class DiscoveryStatus { Idle, Searching, Complete, Error }
 
-class DiscoveryViewModel(private val discovery: RouterDiscovery) : ViewModel() {
+class DiscoveryViewModel(
+    private val discovery: RouterDiscovery,
+    private val isLocalNetworkGranted: () -> Boolean = { true },
+    private val requestLocalNetworkPermission: (callback: (Boolean) -> Unit) -> Unit = { callback ->
+        callback(true)
+    },
+) : ViewModel() {
     val isSupported: Boolean get() = discovery.isSupported
 
     var status: DiscoveryStatus by mutableStateOf(DiscoveryStatus.Idle)
@@ -24,21 +30,37 @@ class DiscoveryViewModel(private val discovery: RouterDiscovery) : ViewModel() {
     var selectedKey: String? by mutableStateOf(null)
         private set
 
+    var errorMessage: String? by mutableStateOf(null)
+        private set
+
     val selectedRouter: DiscoveredRouter?
         get() = routers.firstOrNull { it.key == selectedKey }
 
     fun search() {
         if (!discovery.isSupported || status == DiscoveryStatus.Searching) return
+        if (!isLocalNetworkGranted()) {
+            requestLocalNetworkPermission { granted ->
+                if (granted) {
+                    search()
+                } else {
+                    errorMessage = "Permiso de red local denegado. Actívalo para descubrir routers."
+                    status = DiscoveryStatus.Error
+                }
+            }
+            return
+        }
         status = DiscoveryStatus.Searching
         routers = emptyList()
         selectedKey = null
+        errorMessage = null
         viewModelScope.launch {
             try {
                 routers = discovery.discover()
                 status = DiscoveryStatus.Complete
             } catch (error: CancellationException) {
                 throw error
-            } catch (_: Exception) {
+            } catch (error: Exception) {
+                errorMessage = "${error::class.simpleName}: ${error.message ?: "sin detalle"}"
                 routers = emptyList()
                 status = DiscoveryStatus.Error
             }
