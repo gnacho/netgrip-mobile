@@ -177,14 +177,15 @@ private fun TrafficCard(
         title = "Tráfico de la red",
         icon = NetGripIcons.Activity,
         iconTone = Tone.ACCENT,
-        trailing = {
+    ) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             SegmentedControl(
                 options = TrafficRange.entries.map { it to it.label },
                 selected = range,
                 onSelect = onRangeChange,
             )
-        },
-    ) {
+        }
+        Spacer(Modifier.size(10.dp))
         if (window.size < 2) {
             EmptyStateView(
                 title = "Sin histórico todavía",

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,6 +17,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -44,6 +47,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.gnacho.netgrip.domain.panel.HealthLevel
 import dev.gnacho.netgrip.domain.panel.HealthScore
@@ -175,7 +179,11 @@ fun ShellScreen(
                     color = MaterialTheme.colorScheme.surface,
                     tonalElevation = 0.dp,
                 ) {
-                    Column(Modifier.fillMaxHeight()) {
+                    Column(
+                        Modifier
+                            .fillMaxHeight()
+                            .windowInsetsPadding(WindowInsets.safeDrawing),
+                    ) {
                         Spacer(Modifier.height(8.dp))
                         navigation(permanent)
                     }
@@ -218,7 +226,11 @@ private fun ShellContent(
     onLogout: () -> Unit,
     content: @Composable () -> Unit,
 ) {
-    Column(Modifier.fillMaxSize()) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing),
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -238,11 +250,15 @@ private fun ShellContent(
                     tab.label,
                     style = MaterialTheme.typography.headlineSmall,
                     color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     "$host · ${healthSummary(health)}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
             IconButton(onClick = onRefresh) {

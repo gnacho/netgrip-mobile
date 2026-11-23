@@ -187,7 +187,7 @@ private fun PortTile(port: EthPortDto, modifier: Modifier = Modifier) {
                 )
             }
             Text(
-                if (port.up) Formats.speed(port.speedMbps) else "Cable desconectado",
+                if (port.up) Formats.speed(port.speedMbps) else "Sin cable",
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurface,

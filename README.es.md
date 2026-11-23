@@ -6,15 +6,23 @@ App móvil nativa para [NetGrip](https://github.com/gnacho/netgrip), un panel de
 
 ## Captura
 
-<img src="docs/images/netgrip-mobile-dashboard.png" alt="Panel de solo lectura de NetGrip Mobile en Android con datos del router, salud, WAN y recursos" width="360">
+<img src="docs/images/netgrip-mobile-dashboard.png" alt="Panel de NetGrip Mobile en Android con el medidor de salud, una gráfica de tráfico de 24 horas y la ficha del router" width="360">
 
 *Datos simulados para la captura.*
 
 ## Estado
 
-Este es el shell de solo lectura más las primeras acciones seguras sobre clientes. La pestaña de clientes permite renombrar un dispositivo, fijar su tipo, bloquearlo o desbloquearlo por banda, fijar o quitar su IP actual y enviar un paquete Wake on LAN. Toda escritura pide confirmación, muestra el error del servidor y vuelve a leer el estado del router. El resto de la app sigue en solo lectura. Los tests de host de Android y la compilación del APK de depuración pasan. Las pruebas en emulador y contra un router real siguen pendientes.
+Este es el shell de solo lectura más las primeras acciones seguras sobre clientes. La pestaña de clientes permite renombrar un dispositivo, fijar su tipo, bloquearlo o desbloquearlo por banda, fijar o quitar su IP actual y enviar un paquete Wake on LAN. Toda escritura pide confirmación, muestra el error del servidor y vuelve a leer el estado del router. El resto de la app sigue en solo lectura. Pasan 188 tests de host de Android y la compilación del APK de depuración. Las pruebas en emulador están hechas contra una API simulada. Falta la validación contra un router real.
 
 El shell está descrito en [docs/readonly-shell.md](docs/readonly-shell.md) y las escrituras en [docs/client-writes.md](docs/client-writes.md).
+
+## Interfaz
+
+La app reproduce el sistema visual del panel web de NetGrip en vez de inventar otro: la misma paleta clara y oscura, espaciados, radios, bordes de tarjeta, pills y escala tipográfica, tomados de `app/src/index.css` del panel. La navegación es un menú lateral agrupado: fijo en pantallas anchas, rail en tablet y desplegable en el móvil. Los tres modos de tema se guardan en el dispositivo.
+
+Los iconos son los mismos vectores Lucide que usa el panel web, generados como `ImageVector` de Compose a partir de los SVG originales. No se empaqueta ningún pack de iconos, así que el resultado coincide sin sumar decenas de megas.
+
+El Panel dibuja una gráfica real de tráfico con `GET /api/history`, que el router muestrea cada cinco minutos y guarda 24 horas. La gráfica muestra tasas derivadas de los contadores acumulados, con ventana de 1, 6 o 24 horas y guía al tocar. El detalle del cliente muestra el tráfico de la conexión actual como barra repartida, porque la API no guarda serie por cliente.
 
 ## Requisitos
 

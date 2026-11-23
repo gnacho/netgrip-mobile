@@ -14,6 +14,7 @@ import dev.gnacho.netgrip.ui.login.PlatformBackHandler
 import dev.gnacho.netgrip.ui.shell.ShellScreen
 import dev.gnacho.netgrip.ui.theme.NetGripLoginTheme
 import dev.gnacho.netgrip.ui.theme.NetGripTheme
+import dev.gnacho.netgrip.ui.theme.SystemBars
 import dev.gnacho.netgrip.ui.theme.ThemeController
 import dev.gnacho.netgrip.ui.theme.ThemeMode
 
@@ -39,6 +40,8 @@ fun App(
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
     }
+
+    SystemBars(darkTheme = dark)
 
     if (sessionViewModel.loggedIn) {
         NetGripTheme(darkTheme = dark) {

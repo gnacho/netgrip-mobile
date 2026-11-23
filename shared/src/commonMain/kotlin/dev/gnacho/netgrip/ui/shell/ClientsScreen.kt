@@ -44,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.gnacho.netgrip.data.dto.ClientDto
 import dev.gnacho.netgrip.domain.clients.ClientBlockRules
@@ -205,13 +206,14 @@ private fun ClientRow(client: ClientDto, busy: Boolean, onClick: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
-            }
-            when {
-                busy -> CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                client.blocked -> Pill("Bloqueado", Tone.DANGER, dot = false)
-                else -> ClientLabels.flags(client).firstOrNull()?.let { flag ->
-                    Pill(flag, Tone.NEUTRAL, dot = false)
+                when {
+                    busy -> Pill("Aplicando cambio", Tone.WARN, dot = false)
+                    client.blocked -> Pill("Bloqueado", Tone.DANGER, dot = false)
+                    else -> ClientLabels.flags(client).firstOrNull()?.let { flag ->
+                        Pill(flag, Tone.NEUTRAL, dot = false)
+                    }
                 }
             }
             Icon(
@@ -501,11 +503,13 @@ private fun EditClientDialog(
     onDismiss: () -> Unit,
     onSave: (name: String, deviceType: String) -> Unit,
 ) {
-    var name by remember(client.mac) {
-        mutableStateOf(ClientMetaRules.currentName(state.meta, client.mac))
+    // El valor efectivo es el override guardado y, si no hay, el que anuncia
+    // el cliente. Sin este respaldo, guardar solo el nombre borraria el tipo.
+    var name by remember(client.mac, client.name) {
+        mutableStateOf(ClientMetaRules.effectiveName(state.meta, client))
     }
-    var deviceType by remember(client.mac) {
-        mutableStateOf(ClientMetaRules.currentDeviceType(state.meta, client.mac))
+    var deviceType by remember(client.mac, client.deviceType) {
+        mutableStateOf(ClientMetaRules.effectiveDeviceType(state.meta, client))
     }
     val busy = state.busyMac == client.mac.lowercase()
     AlertDialog(

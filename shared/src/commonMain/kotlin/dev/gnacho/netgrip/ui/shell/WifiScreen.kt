@@ -73,12 +73,14 @@ fun WifiScreen(viewModel: ShellViewModel) {
                 item {
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                        verticalAlignment = Alignment.Top,
                     ) {
                         Icon(
                             NetGripIcons.EyeOff,
                             contentDescription = null,
-                            modifier = Modifier.size(14.dp),
+                            modifier = Modifier
+                                .padding(top = 3.dp)
+                                .size(14.dp),
                             tint = MaterialTheme.netGrip.faint,
                         )
                         Text(

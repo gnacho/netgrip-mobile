@@ -63,7 +63,7 @@ fun SettingsScreen(
         ) {
             item {
                 Banner(
-                    text = "Los cambios se hacen desde el panel web de NetGrip. Esta app solo lee.",
+                    text = "Las acciones de clientes se hacen desde la app. El resto de ajustes, desde el panel web de NetGrip.",
                     tone = Tone.ACCENT,
                     icon = NetGripIcons.Info,
                 )
