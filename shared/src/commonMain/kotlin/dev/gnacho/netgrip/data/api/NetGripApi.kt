@@ -160,7 +160,6 @@ class NetGripApi(
     suspend fun selfUpdate(): ApiResult<SelfUpdateDto> =
         getData("/api/selfupdate") { json.decodeFromJsonElement(it) }
 
-<<<<<<< HEAD
     /** GET /api/clients/meta: nombres y tipos asignados a mano. */
     suspend fun clientMeta(): ApiResult<ClientMetaDto> =
         getData("/api/clients/meta") { json.decodeFromJsonElement(it) }
