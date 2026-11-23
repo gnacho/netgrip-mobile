@@ -6,7 +6,7 @@ NetGrip Mobile is a native mobile client for [NetGrip](https://github.com/gnacho
 
 ## Screenshot
 
-<img src="docs/images/netgrip-mobile-dashboard.png" alt="NetGrip Mobile dashboard on Android with simulated router and client data" width="360">
+<img src="docs/images/netgrip-mobile-dashboard.png" alt="NetGrip Mobile read-only panel on Android with router, health, WAN and resource data" width="360">
 
 *Simulated data for the screenshot.*
 

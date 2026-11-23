@@ -39,6 +39,10 @@ class SessionViewModel(
     var api: NetGripApi? by mutableStateOf(null)
         private set
 
+    /** URL base de la sesion activa, para mostrarla en Ajustes. */
+    var baseUrl: String? by mutableStateOf(null)
+        private set
+
     private var pendingLogin: PendingLogin? = null
 
     val loggedIn: Boolean get() = api?.sessionCookie != null
@@ -62,6 +66,7 @@ class SessionViewModel(
             when (val result = sessionManager.restoreWithResult(client)) {
                 is ApiResult.Ok -> {
                     api = client
+                    baseUrl = url
                     uiState = UiState.Ready
                 }
                 is ApiResult.CertificateChanged -> uiState = UiState.Error(certificateChangedMessage(result.host))
@@ -132,6 +137,7 @@ class SessionViewModel(
         uiState = when (val result = client.login(request.username, request.password)) {
             is ApiResult.Ok -> {
                 api = client
+                baseUrl = request.baseUrl
                 sessionManager.onLoginOk(client, request.baseUrl)
                 UiState.Ready
             }
@@ -158,6 +164,23 @@ class SessionViewModel(
         viewModelScope.launch {
             sessionManager.logout(client)
             api = null
+            baseUrl = null
+            uiState = UiState.Idle
+        }
+    }
+
+    /**
+     * Cierre por sesion caducada: un GET devolvio 401. No se llama al router
+     * (ya no hay sesion) y se borra la cookie guardada para no reintentar con
+     * un token muerto en el siguiente arranque.
+     */
+    fun onSessionExpired() {
+        if (api == null) return
+        pendingLogin = null
+        viewModelScope.launch {
+            sessionManager.forgetSession()
+            api = null
+            baseUrl = null
             uiState = UiState.Idle
         }
     }

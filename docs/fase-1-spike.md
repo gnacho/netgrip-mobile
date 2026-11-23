@@ -30,9 +30,10 @@ The login body is `{"username":"...","password":"..."}`. If the username is empt
 
 ## DTO policy
 
-The /api/system and /api/clients response bodies had not been captured when this scaffold was created. Phase 1 consumes them as `JsonElement` and renders them through tolerant Material 3 components without fixed DTOs.
-
-Before adding typed DTOs, capture real router responses and fix the fields with contract tests. Before expanding the API surface, consider publishing a versioned OpenAPI contract from NetGrip.
+The early scaffold consumed /api/system and /api/clients as `JsonElement`. The
+read-only shell replaces that with typed DTOs whose field names, units and
+optional values were checked against the NetGrip handlers. The contract, the
+tabs and the health rules are documented in `docs/readonly-shell.md`.
 
 ## UI states
 
