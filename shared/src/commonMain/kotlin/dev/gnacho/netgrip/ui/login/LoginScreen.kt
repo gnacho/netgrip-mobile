@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import dev.gnacho.netgrip.discovery.RouterDiscovery
 import dev.gnacho.netgrip.discovery.platformRouterDiscovery
 import dev.gnacho.netgrip.presentation.DiscoveryViewModel
 import dev.gnacho.netgrip.presentation.SessionViewModel
@@ -14,8 +15,12 @@ import dev.gnacho.netgrip.presentation.UiState
 typealias PlatformBackHandler = @Composable (enabled: Boolean, onBack: () -> Unit) -> Unit
 
 @Composable
-fun LoginScreen(viewModel: SessionViewModel, platformBackHandler: PlatformBackHandler = { _, _ -> }) {
-    val discoveryViewModel = remember { DiscoveryViewModel(platformRouterDiscovery()) }
+fun LoginScreen(
+    viewModel: SessionViewModel,
+    platformBackHandler: PlatformBackHandler = { _, _ -> },
+    routerDiscovery: RouterDiscovery = platformRouterDiscovery(),
+) {
+    val discoveryViewModel = remember { DiscoveryViewModel(routerDiscovery) }
     var target by remember { mutableStateOf<LoginTarget?>(null) }
     var showManualEntry by remember { mutableStateOf(false) }
 
