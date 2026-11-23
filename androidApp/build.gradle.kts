@@ -26,8 +26,8 @@ android {
         applicationId = "dev.gnacho.netgrip"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 4
-        versionName = "0.1.8"
+        versionCode = 5
+        versionName = "0.1.10"
     }
 
     buildFeatures {
