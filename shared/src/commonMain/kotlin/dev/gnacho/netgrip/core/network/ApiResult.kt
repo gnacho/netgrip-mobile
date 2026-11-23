@@ -5,7 +5,11 @@ sealed interface ApiResult<out T> {
     data class Ok<T>(val value: T) : ApiResult<T>
     data object Unauthorized : ApiResult<Nothing>
     data class RateLimited(val retryAfterSeconds: Long?) : ApiResult<Nothing>
-    data class HttpError(val code: Int) : ApiResult<Nothing>
+    /**
+     * Error HTTP. [message] lleva el texto de {"error":"..."} cuando el
+     * cuerpo lo trae (escrituras); las lecturas lo dejan a null.
+     */
+    data class HttpError(val code: Int, val message: String? = null) : ApiResult<Nothing>
     data object Unreachable : ApiResult<Nothing>
     data class CertificateChanged(
         val host: String,

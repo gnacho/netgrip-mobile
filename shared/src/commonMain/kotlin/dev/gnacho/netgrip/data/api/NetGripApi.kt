@@ -7,6 +7,11 @@ import dev.gnacho.netgrip.core.network.UnknownCertificateException
 import dev.gnacho.netgrip.core.network.certificateValidationException
 import dev.gnacho.netgrip.data.dto.AccessDto
 import dev.gnacho.netgrip.data.dto.BoardDto
+import dev.gnacho.netgrip.data.dto.ClientBlockRequest
+import dev.gnacho.netgrip.data.dto.ClientMetaDto
+import dev.gnacho.netgrip.data.dto.ClientMetaRequest
+import dev.gnacho.netgrip.data.dto.ClientReserveRequest
+import dev.gnacho.netgrip.data.dto.ClientWriteResponseDto
 import dev.gnacho.netgrip.data.dto.ClientsDto
 import dev.gnacho.netgrip.data.dto.EthPortsDto
 import dev.gnacho.netgrip.data.dto.LoginRequest
@@ -17,6 +22,8 @@ import dev.gnacho.netgrip.data.dto.SystemDto
 import dev.gnacho.netgrip.data.dto.WanDto
 import dev.gnacho.netgrip.data.dto.WifiDto
 import dev.gnacho.netgrip.data.dto.WirelessRadioDto
+import dev.gnacho.netgrip.data.dto.WolRequest
+import dev.gnacho.netgrip.data.dto.WolResponseDto
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.HttpClientEngine
@@ -36,10 +43,13 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.io.IOException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Cliente de la API REST de NetGrip para la app movil de solo lectura.
+ * Cliente de la API REST de NetGrip para la app movil.
  *
  * Verificado en internal/server/server.go:
  *  - POST /api/login devuelve 204 y la sesion via Set-Cookie; 401 con
@@ -49,9 +59,13 @@ import kotlinx.serialization.json.decodeFromJsonElement
  *  - POST /api/logout revoca la sesion.
  *  - El resto de lecturas exigen sesion y responden 502 cuando ubus falla.
  *
- * Todos los GET son de solo lectura. Los DTO viven en data/dto y son
- * tolerantes: claves de mas se ignoran y los campos opcionales del router
- * tienen valor por defecto.
+ * Las escrituras se limitan a /api/clients/meta, /api/clients/block,
+ * /api/clients/reserve y /api/wol (verificadas en internal/server/server.go y
+ * internal/modules). Un non-2xx puede traer {"error":"..."}, que se conserva
+ * en [ApiResult.HttpError.message] para mostrarlo.
+ *
+ * Los DTO viven en data/dto y son tolerantes: claves de mas se ignoran y los
+ * campos opcionales del router tienen valor por defecto.
  */
 class NetGripApi(
     engine: HttpClientEngine,
@@ -145,6 +159,48 @@ class NetGripApi(
     suspend fun selfUpdate(): ApiResult<SelfUpdateDto> =
         getData("/api/selfupdate") { json.decodeFromJsonElement(it) }
 
+    /** GET /api/clients/meta: nombres y tipos asignados a mano. */
+    suspend fun clientMeta(): ApiResult<ClientMetaDto> =
+        getData("/api/clients/meta") { json.decodeFromJsonElement(it) }
+
+    /**
+     * POST /api/clients/meta. Reemplaza la ficha completa del cliente: con
+     * nombre y tipo vacios se borra el override (el servidor elimina la MAC
+     * del mapa). Devuelve el mapa actualizado.
+     */
+    suspend fun setClientMeta(mac: String, name: String, deviceType: String): ApiResult<ClientMetaDto> =
+        postJson("/api/clients/meta", ClientMetaRequest(mac, name, deviceType)) {
+            json.decodeFromJsonElement(it)
+        }
+
+    /**
+     * POST /api/clients/block. [type] es "wifi" o "cable" y [band] "" o una
+     * banda del payload /api/clients. Solo se llama desde acciones
+     * confirmadas y nunca con un cliente self o no blockable.
+     */
+    suspend fun blockClient(
+        mac: String,
+        type: String,
+        band: String,
+        blocked: Boolean,
+    ): ApiResult<ClientWriteResponseDto> =
+        postJson("/api/clients/block", ClientBlockRequest(mac, type, band, blocked)) {
+            json.decodeFromJsonElement(it)
+        }
+
+    /**
+     * POST /api/clients/reserve. Solo para fijar la IP actual del cliente o
+     * para quitar una reserva existente.
+     */
+    suspend fun reserveClient(mac: String, ip: String, reserved: Boolean): ApiResult<ClientWriteResponseDto> =
+        postJson("/api/clients/reserve", ClientReserveRequest(mac, ip, reserved)) {
+            json.decodeFromJsonElement(it)
+        }
+
+    /** POST /api/wol: paquete magico, no persiste nada en el router. */
+    suspend fun wakeOnLan(mac: String): ApiResult<WolResponseDto> =
+        postJson("/api/wol", WolRequest(mac)) { json.decodeFromJsonElement(it) }
+
     suspend fun logout(): ApiResult<Unit> = safeCall {
         try {
             client.post("$baseUrl/api/logout") { sessionHeader() }
@@ -168,6 +224,40 @@ class NetGripApi(
     private fun HttpRequestBuilder.sessionHeader() {
         sessionCookie?.let { header(HttpHeaders.Cookie, it) }
     }
+
+    /**
+     * POST con cuerpo JSON y envelope de error. En un non-2xx se intenta
+     * leer {"error":"..."} para poder mostrarlo tal cual.
+     */
+    private suspend inline fun <reified B, reified T> postJson(
+        path: String,
+        body: B,
+        crossinline decode: (JsonElement) -> T,
+    ): ApiResult<T> = safeCall {
+        val response = client.post("$baseUrl$path") {
+            contentType(ContentType.Application.Json)
+            sessionHeader()
+            setBody(body)
+        }
+        when (response.status) {
+            HttpStatusCode.OK -> ApiResult.Ok(decode(response.body<JsonElement>()))
+            HttpStatusCode.Unauthorized -> ApiResult.Unauthorized
+            HttpStatusCode.TooManyRequests -> ApiResult.RateLimited(retryAfter(response))
+            else -> ApiResult.HttpError(response.status.value, errorMessage(response))
+        }
+    }
+
+    /** Texto de {"error":"..."} del router, o null si el cuerpo no lo trae. */
+    private suspend fun errorMessage(response: HttpResponse): String? =
+        try {
+            val element = response.body<JsonElement>()
+            (element as? JsonObject)?.get("error")?.jsonPrimitive?.contentOrNull
+                ?.takeIf { it.isNotBlank() }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Throwable) {
+            null
+        }
 
     private fun extractSessionCookie(response: HttpResponse): String? {
         val setCookies = response.headers.getAll(HttpHeaders.SetCookie).orEmpty()
