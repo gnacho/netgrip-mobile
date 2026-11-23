@@ -1,8 +1,10 @@
 # Read-only mobile shell
 
 Second deliverable of netgrip-mobile: the phase 1 spike dashboard is replaced by a
-five-tab shell that reads the real NetGrip API. Nothing in the app writes to the
-router. The only non-GET calls are the existing login and logout.
+five-tab shell that reads the real NetGrip API. Nothing in this document writes
+to the router. The only non-GET calls of the shell are the existing login and
+logout. The reversible client actions added later are described in
+[client-writes.md](client-writes.md).
 
 ## Contract
 
