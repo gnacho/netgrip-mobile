@@ -1,6 +1,10 @@
 package dev.gnacho.netgrip.data.api
 
 import dev.gnacho.netgrip.core.network.ApiResult
+import dev.gnacho.netgrip.core.network.CertificateChangedException
+import dev.gnacho.netgrip.core.network.SelfSignedCertificatesUnsupportedException
+import dev.gnacho.netgrip.core.network.UnknownCertificateException
+import dev.gnacho.netgrip.core.network.certificateValidationException
 import dev.gnacho.netgrip.data.dto.LoginRequest
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -131,10 +135,19 @@ class NetGripApi(
     private suspend fun <T> safeCall(block: suspend () -> ApiResult<T>): ApiResult<T> =
         try {
             block()
-        } catch (e: IOException) {
-            ApiResult.Unreachable
         } catch (t: Throwable) {
-            ApiResult.Unknown(t.message)
+            when (val certificateError = t.certificateValidationException()) {
+                is CertificateChangedException -> ApiResult.CertificateChanged(
+                    host = certificateError.host,
+                    expectedFingerprint = certificateError.expectedFingerprint,
+                    actualFingerprint = certificateError.actualFingerprint,
+                )
+                is SelfSignedCertificatesUnsupportedException ->
+                    ApiResult.CertificateUnsupported(certificateError.message ?: "Certificado no soportado")
+                is UnknownCertificateException ->
+                    ApiResult.Unknown(certificateError.message)
+                null -> if (t is IOException) ApiResult.Unreachable else ApiResult.Unknown(t.message)
+            }
         }
 
     companion object {

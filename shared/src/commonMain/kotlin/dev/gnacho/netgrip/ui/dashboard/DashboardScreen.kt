@@ -53,7 +53,7 @@ fun DashboardScreen(sessionViewModel: SessionViewModel) {
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             when (val state = viewModel.uiState) {
-                UiState.Idle, UiState.Loading ->
+                UiState.Idle, UiState.Loading, is UiState.CertificateConfirmation ->
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 UiState.RouterUnreachable ->
                     CenteredMessage("Router inalcanzable. Revisa la conexión.") { viewModel.refresh() }

@@ -1,7 +1,7 @@
 # ADR 0003: Per-router TLS fingerprints
 
 Date: 2026-11-22
-Status: accepted, implementation in phase 2
+Status: accepted, implemented on Android
 
 ## Context
 
@@ -9,10 +9,12 @@ NetGrip is often served on the LAN over HTTP or HTTPS with a self-signed certifi
 
 ## Decision
 
-- Never accept every certificate.
-- Phase 1 (spike): test over LAN HTTP or valid HTTPS. The Android manifest explicitly and deliberately sets `usesCleartextTraffic="true"` during the spike.
-- Phase 2: when connecting to a self-signed HTTPS endpoint for the first time, show the certificate fingerprint and ask for explicit confirmation. Store the fingerprint per router and warn if it changes. Also define the behavior when the same router switches between HTTP and HTTPS, because NetGrip issues cookies with different names.
+- Never accept every certificate. The Android manifest explicitly and deliberately sets `usesCleartextTraffic="true"` for HTTP-only routers.
+- Before sending credentials, Android probes HTTPS without a session cookie. It tries HTTP only when HTTPS does not respond. A certificate failure never triggers an HTTP downgrade.
+- Certificates trusted by the system work without a prompt. An unknown certificate is rejected during the handshake and its SHA-256 fingerprint is shown for explicit confirmation. Only after confirmation is the fingerprint encrypted with the existing `SecureStorage` and used for that normalized host.
+- A pinned host never falls back to HTTP. A different certificate is rejected before any HTTP request or credential is sent, including during login and session restoration.
+- iOS keeps supporting HTTP and system-trusted HTTPS. Self-signed certificate confirmation is explicitly unsupported there and no trust-all handler is installed.
 
 ## Consequences
 
-No phase 1 screen claims certificate validation yet. The phase 2 acceptance check includes real tests for self-signed certificates and scheme changes.
+Scheme selection and credential gating have common tests. Android host tests also start local TLS servers with temporary self-signed certificates whose CN does not match the host, verifying unknown, accepted and changed certificates without contacting a real router. Changing or removing a pinned certificate requires an explicit recovery flow in a later phase.

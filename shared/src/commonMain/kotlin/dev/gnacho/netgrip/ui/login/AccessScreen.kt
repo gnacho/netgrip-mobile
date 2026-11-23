@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -38,6 +39,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import dev.gnacho.netgrip.core.network.formatSha256Fingerprint
 import dev.gnacho.netgrip.presentation.SessionViewModel
 import dev.gnacho.netgrip.presentation.UiState
 
@@ -142,7 +144,7 @@ fun AccessScreen(target: LoginTarget, viewModel: SessionViewModel, onBack: () ->
             if (target.routerName != null) {
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "El beacon no indica HTTPS, por eso la URL descubierta empieza por HTTP. Puedes cambiarla si tu router usa HTTPS.",
+                    "Antes de entrar, NetGrip comprueba HTTPS sin enviar tus credenciales.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -168,6 +170,52 @@ fun AccessScreen(target: LoginTarget, viewModel: SessionViewModel, onBack: () ->
         }
         Spacer(Modifier.height(12.dp))
     }
+    CertificateConfirmationDialog(
+        state = viewModel.uiState,
+        onConfirm = viewModel::confirmCertificate,
+        onCancel = viewModel::cancelCertificateConfirmation,
+    )
+}
+
+@Composable
+private fun CertificateConfirmationDialog(
+    state: UiState,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val confirmation = state as? UiState.CertificateConfirmation ?: return
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("Confirmar certificado desconocido") },
+        text = {
+            Column {
+                Text("El router ${confirmation.host} usa un certificado que este dispositivo no reconoce.")
+                Spacer(Modifier.height(12.dp))
+                Text("Huella SHA-256:", fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    formatSha256Fingerprint(confirmation.fingerprint),
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "Confirma solo si has verificado esta huella por otra vía. Un certificado distinto podría pertenecer a un atacante. NetGrip guardará la huella para este host y rechazará cualquier cambio.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = onConfirm) {
+                Text("Confirmar y entrar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onCancel) {
+                Text("Cancelar")
+            }
+        },
+    )
 }
 
 @Composable

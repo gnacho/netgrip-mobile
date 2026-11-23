@@ -36,15 +36,15 @@ Before adding typed DTOs, capture real router responses and fix the fields with 
 
 ## UI states
 
-`Idle`, `Loading`, `Ready`, `Error(message)`, `SessionExpired`, `RouterUnreachable`, and `RateLimited(retryAfter)`. `SessionExpired` forces an explicit return to login. The app must not remain in a loading state indefinitely.
+`Idle`, `Loading`, `Ready`, `Error(message)`, `SessionExpired`, `RouterUnreachable`, `RateLimited(retryAfter)`, and `CertificateConfirmation(host, fingerprint)`. `SessionExpired` forces an explicit return to login. The app must not remain in a loading state indefinitely.
 
 ## On-demand router discovery
 
 Android can send the existing NetGrip fleet probe to UDP broadcast port 5141. The socket remains open for at most 3 seconds, accepts bounded JSON beacons, validates protocol version, type, ID, display fields, IPv4 address, port and a timestamp within 60 seconds, and deduplicates by ID, address and port. One pass retains at most 32 routers. No credentials are sent or tested during discovery.
 
-Beacons are unsigned, so every discovered router is labeled "Sin verificar". Selecting one only prepares the login form. Credentials are submitted only after the user presses Entrar. Discovered URLs start as `http://<address>:<port>` because the beacon carries no transport scheme and this phase does not probe HTTPS. The user can edit the URL before logging in. Manual HTTP and HTTPS entry remains available.
+Beacons are unsigned, so every discovered router is labeled "Sin verificar". Selecting one only prepares the login form. Discovered URLs start as `http://<address>:<port>` because the beacon carries no transport scheme. After the user presses Entrar, Android probes HTTPS and then HTTP if needed with a credential-free GET /api/me. System-trusted certificates proceed directly. An unknown certificate requires explicit SHA-256 confirmation before login, is persisted per host, and is rejected if it changes. A pinned host never falls back to HTTP. Manual HTTP and HTTPS entry remains available.
 
-iOS discovery is explicitly unsupported. The iOS UI offers manual entry and never returns simulated routers.
+iOS discovery is explicitly unsupported. The iOS UI offers manual entry and never returns simulated routers. iOS supports HTTP and system-trusted HTTPS, but self-signed certificate confirmation is explicitly unsupported.
 
 ## Acceptance checks
 
@@ -54,4 +54,4 @@ iOS discovery is explicitly unsupported. The iOS UI offers manual entry and neve
 
 ## Out of scope
 
-Writes, persisted multi-router profiles, TLS pinning, additional endpoints, the iOS app, and publication. The main risk in this phase is operational: a mobile error must not be able to lock the user out of the router, so this phase performs no writes.
+Writes, persisted multi-router profiles, additional endpoints, the iOS app, and publication. The main risk in this phase is operational: a mobile error must not be able to lock the user out of the router, so this phase performs no writes.

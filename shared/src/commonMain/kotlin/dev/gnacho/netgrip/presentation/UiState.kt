@@ -9,4 +9,5 @@ sealed interface UiState {
     data object SessionExpired : UiState
     data object RouterUnreachable : UiState
     data class RateLimited(val retryAfterSeconds: Long?) : UiState
+    data class CertificateConfirmation(val host: String, val fingerprint: String) : UiState
 }

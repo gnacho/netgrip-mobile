@@ -7,5 +7,11 @@ sealed interface ApiResult<out T> {
     data class RateLimited(val retryAfterSeconds: Long?) : ApiResult<Nothing>
     data class HttpError(val code: Int) : ApiResult<Nothing>
     data object Unreachable : ApiResult<Nothing>
+    data class CertificateChanged(
+        val host: String,
+        val expectedFingerprint: String,
+        val actualFingerprint: String,
+    ) : ApiResult<Nothing>
+    data class CertificateUnsupported(val message: String) : ApiResult<Nothing>
     data class Unknown(val message: String?) : ApiResult<Nothing>
 }
