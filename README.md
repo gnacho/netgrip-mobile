@@ -12,9 +12,9 @@ NetGrip Mobile is a native mobile client for [NetGrip](https://github.com/gnacho
 
 ## Status
 
-This is the phase 1 read-only scaffold. The Android host tests and debug APK build pass. Emulator tests and validation against a real router are still pending.
+This is the read-only shell plus the first safe client actions. The client tab can rename a device, set its type, block or unblock it per band, pin or remove its current IP and send a Wake on LAN packet. Every write asks for confirmation, shows the server error and re-reads the router state. The rest of the app stays read-only. The Android host tests and debug APK build pass. Emulator tests and validation against a real router are still pending.
 
-See [docs/fase-1-spike.md](docs/fase-1-spike.md) for the scope and acceptance checks.
+The shell is described in [docs/readonly-shell.md](docs/readonly-shell.md) and the client writes in [docs/client-writes.md](docs/client-writes.md).
 
 ## Requirements
 

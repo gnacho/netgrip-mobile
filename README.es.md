@@ -12,9 +12,9 @@ App móvil nativa para [NetGrip](https://github.com/gnacho/netgrip), un panel de
 
 ## Estado
 
-Este es el scaffold de solo lectura de la fase 1. Los tests de host de Android y la compilación del APK de depuración pasan. Las pruebas en emulador y contra un router real siguen pendientes.
+Este es el shell de solo lectura más las primeras acciones seguras sobre clientes. La pestaña de clientes permite renombrar un dispositivo, fijar su tipo, bloquearlo o desbloquearlo por banda, fijar o quitar su IP actual y enviar un paquete Wake on LAN. Toda escritura pide confirmación, muestra el error del servidor y vuelve a leer el estado del router. El resto de la app sigue en solo lectura. Los tests de host de Android y la compilación del APK de depuración pasan. Las pruebas en emulador y contra un router real siguen pendientes.
 
-El alcance y los gates están en [docs/fase-1-spike.md](docs/fase-1-spike.md).
+El shell está descrito en [docs/readonly-shell.md](docs/readonly-shell.md) y las escrituras en [docs/client-writes.md](docs/client-writes.md).
 
 ## Requisitos
 
