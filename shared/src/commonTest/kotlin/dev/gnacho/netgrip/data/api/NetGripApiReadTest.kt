@@ -10,9 +10,11 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -97,6 +99,12 @@ class NetGripApiReadTest {
             )
         }
         assertIs<ApiResult.Unknown>(api.access())
+    }
+
+    @Test
+    fun laCancelacionNoSeConvierteEnErrorDeRed() = runTest {
+        val api = apiWith { throw CancellationException("cancelada") }
+        assertFailsWith<CancellationException> { api.board() }
     }
 
     @Test

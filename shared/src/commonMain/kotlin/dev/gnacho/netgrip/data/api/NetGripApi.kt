@@ -32,6 +32,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.CancellationException
 import kotlinx.io.IOException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -185,6 +186,8 @@ class NetGripApi(
     private suspend fun <T> safeCall(block: suspend () -> ApiResult<T>): ApiResult<T> =
         try {
             block()
+        } catch (error: CancellationException) {
+            throw error
         } catch (t: Throwable) {
             when (val certificateError = t.certificateValidationException()) {
                 is CertificateChangedException -> ApiResult.CertificateChanged(
