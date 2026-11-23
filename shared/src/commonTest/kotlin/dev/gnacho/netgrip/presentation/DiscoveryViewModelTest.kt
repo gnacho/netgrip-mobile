@@ -93,6 +93,49 @@ class DiscoveryViewModelTest {
     }
 
     @Test
+    fun permissionDeniedStopsBeforeUsingSockets() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val discovery = FakeDiscovery()
+            val viewModel = DiscoveryViewModel(
+                discovery,
+                isLocalNetworkGranted = { false },
+                requestLocalNetworkPermission = { callback -> callback(false) },
+            )
+            viewModel.search()
+            testScheduler.advanceUntilIdle()
+            assertEquals(0, discovery.calls)
+            assertEquals(DiscoveryStatus.Error, viewModel.status)
+            assertEquals("Permiso de red local denegado. Actívalo para descubrir routers.", viewModel.errorMessage)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun permissionGrantedStartsDiscoveryAfterThePrompt() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val discovery = FakeDiscovery()
+            var granted = false
+            val viewModel = DiscoveryViewModel(
+                discovery,
+                isLocalNetworkGranted = { granted },
+                requestLocalNetworkPermission = { callback ->
+                    granted = true
+                    callback(true)
+                },
+            )
+            viewModel.search()
+            testScheduler.advanceUntilIdle()
+            assertEquals(1, discovery.calls)
+            assertEquals(DiscoveryStatus.Complete, viewModel.status)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
     fun unsupportedPlatformNeverStartsDiscovery() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {

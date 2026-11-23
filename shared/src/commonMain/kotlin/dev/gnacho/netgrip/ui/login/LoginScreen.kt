@@ -19,8 +19,14 @@ fun LoginScreen(
     viewModel: SessionViewModel,
     platformBackHandler: PlatformBackHandler = { _, _ -> },
     routerDiscovery: RouterDiscovery = platformRouterDiscovery(),
+    isLocalNetworkGranted: () -> Boolean = { true },
+    requestLocalNetworkPermission: (callback: (Boolean) -> Unit) -> Unit = { callback ->
+        callback(true)
+    },
 ) {
-    val discoveryViewModel = remember { DiscoveryViewModel(routerDiscovery) }
+    val discoveryViewModel = remember {
+        DiscoveryViewModel(routerDiscovery, isLocalNetworkGranted, requestLocalNetworkPermission)
+    }
     var target by remember { mutableStateOf<LoginTarget?>(null) }
     var showManualEntry by remember { mutableStateOf(false) }
 
