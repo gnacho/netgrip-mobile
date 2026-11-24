@@ -471,4 +471,40 @@ class SessionSitesTest {
         assertEquals("dev-a", viewModel.sites.currentDeviceId)
         assertEquals("Casa", viewModel.currentNetwork?.name)
     }
+
+    @Test
+    fun anadirDesdeUnaRedLaGuardaEnEsaRedYNoEnLaActual() = runSitesTest {
+        val storage = MapStorage()
+        val casa = SavedDevice(id = "dev-a", url = "http://192.168.1.3:8080", name = "casa")
+        seed(
+            storage,
+            SavedSites(
+                networks = listOf(
+                    SavedNetwork("net-casa", "Casa", listOf(casa)),
+                    SavedNetwork("net-ofi", "Oficina"),
+                ),
+                currentNetworkId = "net-casa",
+                currentDeviceId = casa.id,
+            ),
+        )
+        storage.save("session.device.dev-a", "netgrip_http_session=cookie-a")
+        val engine = RouterServer(hostname = "ofi").engine(this)
+        val viewModel = SessionViewModel(storage, endpointProbe = PassThroughProbe(), apiFactory = Factory(engine))
+        viewModel.autoRestore()
+        advanceUntilIdle()
+
+        val result = viewModel.connectDevice(
+            url = "http://192.168.1.9:8080",
+            username = "root",
+            password = "clave",
+            networkId = "net-ofi",
+        )
+        advanceUntilIdle()
+
+        assertIs<ConnectResult.Ok>(result)
+        assertEquals("net-ofi", viewModel.sites.currentNetworkId)
+        assertEquals(1, viewModel.sites.network("net-ofi")?.devices?.size)
+        assertEquals("http://192.168.1.9:8080", viewModel.sites.network("net-ofi")?.devices?.single()?.url)
+        assertEquals(1, viewModel.sites.network("net-casa")?.devices?.size)
+    }
 }

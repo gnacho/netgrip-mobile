@@ -20,6 +20,15 @@ Pasan 212 tests de host de Android y la compilación del APK de depuración. Las
 
 El shell está descrito en [docs/readonly-shell.md](docs/readonly-shell.md), las escrituras en [docs/client-writes.md](docs/client-writes.md) y las redes y dispositivos en [docs/multi-network.md](docs/multi-network.md).
 
+## Navegación
+
+La app sigue el modelo de datos: la pantalla de inicio es el listado de redes, al tocar una se ven sus dispositivos y al abrir un dispositivo aparece su configuración. El botón atrás del sistema recorre el mismo camino al revés. La cabecera del dispositivo mantiene las pastillas de red y dispositivo como atajo.
+
+<p float="left">
+  <img src="docs/images/netgrip-mobile-networks.png" alt="Listado de redes con la actual marcada" width="240">
+  <img src="docs/images/netgrip-mobile-devices.png" alt="Listado de dispositivos de una red con rol y estado de conexión" width="240">
+</p>
+
 ## Interfaz
 
 La app reproduce el sistema visual del panel web de NetGrip en vez de inventar otro: la misma paleta clara y oscura, espaciados, radios, bordes de tarjeta, pills y escala tipográfica, tomados de `app/src/index.css` del panel. La navegación es un menú lateral agrupado: fijo en pantallas anchas, rail en tablet y desplegable en el móvil. Los tres modos de tema se guardan en el dispositivo.

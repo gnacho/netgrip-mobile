@@ -470,7 +470,7 @@ private fun DeviceRow(
  * contrasena, con la confirmacion de huella cuando el certificado es nuevo.
  */
 @Composable
-private fun DeviceLoginDialog(
+fun DeviceLoginDialog(
     title: String,
     initialUrl: String,
     onDismiss: () -> Unit,
@@ -599,7 +599,7 @@ private fun DeviceLoginDialog(
 }
 
 @Composable
-private fun NameDialog(
+fun NameDialog(
     title: String,
     initial: String,
     confirmLabel: String,
@@ -627,7 +627,7 @@ private fun NameDialog(
 }
 
 @Composable
-private fun ConfirmDialog(
+fun ConfirmDialog(
     title: String,
     body: String,
     confirmLabel: String,

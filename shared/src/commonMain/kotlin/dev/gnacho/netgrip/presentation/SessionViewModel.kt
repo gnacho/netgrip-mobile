@@ -66,6 +66,10 @@ class SessionViewModel(
     var sites: SavedSites by mutableStateOf(SavedSites())
         private set
 
+    /** True cuando la lista guardada ya se ha leido (o no habia nada). */
+    var sitesLoaded by mutableStateOf(false)
+        private set
+
     /** Aviso para las hojas de red y dispositivo. */
     var siteMessage: String? by mutableStateOf(null)
         private set
@@ -93,6 +97,7 @@ class SessionViewModel(
         if (uiState == UiState.Loading || loggedIn) return
         viewModelScope.launch {
             sites = siteStore.load(sessionManager.lastUrl())
+            sitesLoaded = true
             val device = sites.currentDevice
             if (device == null) {
                 uiState = UiState.Idle
@@ -226,6 +231,7 @@ class SessionViewModel(
         password: String,
         trustHost: String? = null,
         trustFingerprint: String? = null,
+        networkId: String? = null,
     ): ConnectResult {
         ensureSites()
         val cleanUrl = SiteRules.normalizeUrl(url)
@@ -261,7 +267,7 @@ class SessionViewModel(
                 baseUrl = device.url
                 pendingLoginUrl = null
                 uiState = UiState.Ready
-                upsertDevice(device)
+                upsertDevice(device, networkOverride = networkId)
                 refreshDeviceInfo(client, device)
                 ConnectResult.Ok
             }
@@ -504,7 +510,10 @@ class SessionViewModel(
 
     /** Carga la lista guardada la primera vez que se necesita. */
     private suspend fun ensureSites() {
-        if (sites.networks.isEmpty()) sites = siteStore.load(sessionManager.lastUrl())
+        if (sites.networks.isEmpty()) {
+            sites = siteStore.load(sessionManager.lastUrl())
+        }
+        sitesLoaded = true
     }
 
     private fun clearSession() {
@@ -540,10 +549,12 @@ class SessionViewModel(
      * Guarda el dispositivo en su red: la que ya lo contiene o, si es nuevo, la
      * actual. Si no hay ninguna red, crea "Mi red".
      */
-    private suspend fun upsertDevice(device: SavedDevice) {
+    private suspend fun upsertDevice(device: SavedDevice, networkOverride: String? = null) {
         var state = sites
         val owning = state.networks.firstOrNull { network -> network.devices.any { it.id == device.id } }
-        val target = owning ?: state.currentNetwork
+        val target = owning
+            ?: networkOverride?.let { state.network(it) }
+            ?: state.currentNetwork
         if (target == null) {
             val network = SavedNetwork(
                 id = SiteRules.networkId(SiteRules.DEFAULT_NETWORK_NAME, state.networks),
