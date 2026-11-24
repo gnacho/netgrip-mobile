@@ -18,10 +18,13 @@ On the first run after upgrading, `SiteStore.load()` reads the previous single `
 
 ## Flows
 
-- **Header**: two chips, the current network and the current device. Tapping one opens its sheet.
+- **Networks list** (home): every saved network with its device count and the current one marked. Create, rename and delete from here.
+- **Devices list**: the routers of the selected network with their URL, role and connection state. Tap to connect, add a device by URL, import the fleet or remove a device.
+- **Device configuration**: the tabs of the selected device. System back returns to the device list, and again to the networks list.
+- **Header**: two chips, the current network and the current device. Tapping one opens its sheet, as a shortcut to the same lists.
 - **Networks sheet**: lists every network with its device count, marks the current one, and allows renaming, deleting and creating. Selecting an empty network closes the session and shows the login screen, because there is nothing to connect to.
 - **Devices sheet**: lists the routers of the current network with their URL, role and connection state. Tapping a device restores its cookie silently. If there is no valid session it opens a credentials dialog, including the self-signed certificate confirmation when the fingerprint is new.
-- **Add device**: URL, user and password in one dialog, without leaving the app. The password is never stored, only the resulting cookie.
+- **Add device**: URL, user and password in one dialog, without leaving the app. The password is never stored, only the resulting cookie. A device added from a network is stored in that network, not in whichever one happened to be connected.
 - **Import fleet**: reads `GET /api/fleet` from the connected router and adds its nodes as devices of the current network. Only name and address are used; the fleet passwords are never read or stored.
 - **Login screen**: networks and devices already saved appear under "Tus redes". Tapping one restores the session or opens the login prefilled with its URL.
 - **Logout**: revokes and deletes only the current device cookie, keeps the device in the list and tries another saved device before asking for credentials again.

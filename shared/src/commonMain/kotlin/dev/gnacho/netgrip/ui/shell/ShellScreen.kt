@@ -1,6 +1,7 @@
 package dev.gnacho.netgrip.ui.shell
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -93,6 +94,7 @@ fun ShellScreen(
     platformBackHandler: PlatformBackHandler = { _, _ -> },
     themeMode: ThemeMode = ThemeMode.SYSTEM,
     onThemeModeChange: (ThemeMode) -> Unit = {},
+    onBack: () -> Unit = {},
 ) {
     val api = sessionViewModel.api ?: return
     val viewModel = remember(api) { ShellViewModel(api) }
@@ -108,6 +110,11 @@ fun ShellScreen(
         if (sessionExpired) sessionViewModel.onSessionExpired()
     }
 
+    val effectiveDark = when (themeMode) {
+        ThemeMode.DARK -> true
+        ThemeMode.LIGHT -> false
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+    }
     val health = remember(panel.system, panel.wan, panel.mode) {
         HealthScoreCalculator.compute(panel.system, panel.wan, panel.mode)
     }
@@ -119,8 +126,12 @@ fun ShellScreen(
         scope.launch { drawerState.close() }
     }
 
-    platformBackHandler(drawerState.isOpen || tab != ShellTab.PANEL) {
-        if (drawerState.isOpen) scope.launch { drawerState.close() } else tab = ShellTab.PANEL
+    platformBackHandler(true) {
+        when {
+            drawerState.isOpen -> scope.launch { drawerState.close() }
+            tab != ShellTab.PANEL -> tab = ShellTab.PANEL
+            else -> onBack()
+        }
     }
 
     BoxWithConstraints(
@@ -137,6 +148,7 @@ fun ShellScreen(
                 host = host,
                 health = health,
                 themeMode = themeMode,
+                onBack = onBack,
                 onThemeModeChange = onThemeModeChange,
                 showLabels = labels,
                 onSelect = ::select,
@@ -153,11 +165,11 @@ fun ShellScreen(
                 showMenu = showMenu,
                 onNetworkClick = { showNetworks = true },
                 onDeviceClick = { showDevices = true },
-                darkTheme = themeMode == ThemeMode.DARK,
+                darkTheme = effectiveDark,
                 onMenu = { scope.launch { drawerState.open() } },
                 onRefresh = { viewModel.refresh(tab) },
                 onThemeToggle = {
-                    onThemeModeChange(if (themeMode == ThemeMode.DARK) ThemeMode.LIGHT else ThemeMode.DARK)
+                    onThemeModeChange(if (effectiveDark) ThemeMode.LIGHT else ThemeMode.DARK)
                 },
                 onLogout = { sessionViewModel.logout() },
             ) {
@@ -335,6 +347,7 @@ private fun NavigationList(
     host: String,
     health: HealthScore,
     themeMode: ThemeMode,
+    onBack: () -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
     showLabels: Boolean,
     onSelect: (ShellTab) -> Unit,
@@ -375,6 +388,31 @@ private fun NavigationList(
                     )
                     Text(host, style = MonoStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(40.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .clickable(onClick = onBack)
+                .padding(horizontal = if (showLabels) 10.dp else 0.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = if (showLabels) Arrangement.spacedBy(10.dp) else Arrangement.Center,
+        ) {
+            Icon(
+                NetGripIcons.ChevronLeft,
+                contentDescription = "Todas las redes",
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (showLabels) {
+                Text(
+                    "Todas las redes",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
 

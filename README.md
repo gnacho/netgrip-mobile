@@ -20,6 +20,15 @@ The app can also hold as many networks and routers as needed. The header has a n
 
 The shell is described in [docs/readonly-shell.md](docs/readonly-shell.md), the client writes in [docs/client-writes.md](docs/client-writes.md) and the network and device handling in [docs/multi-network.md](docs/multi-network.md).
 
+## Navigation
+
+The app follows the data model: the home screen is the list of networks, tapping one shows its devices, and opening a device shows its configuration. The system back button walks the same path in reverse. The device header still has network and device chips as shortcuts.
+
+<p float="left">
+  <img src="docs/images/netgrip-mobile-networks.png" alt="Networks list with the current network marked" width="240">
+  <img src="docs/images/netgrip-mobile-devices.png" alt="Devices list of a network with role and connection state" width="240">
+</p>
+
 ## Interface
 
 The app reproduces the NetGrip web visual system instead of inventing a second one: the same light and dark palettes, spacing, radii, card borders, pills and typography scale, taken from `app/src/index.css` of the web panel. Navigation is a grouped side menu, a permanent drawer on wide screens, a rail on tablets and a modal drawer on phones. The three theme modes are stored on the device.
