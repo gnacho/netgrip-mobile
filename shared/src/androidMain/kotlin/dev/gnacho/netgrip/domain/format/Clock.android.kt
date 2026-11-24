@@ -8,3 +8,5 @@ private val clock = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemD
 
 actual fun formatClock(epochSeconds: Long): String =
     clock.format(Instant.ofEpochSecond(epochSeconds))
+
+actual fun nowEpochSeconds(): Long = System.currentTimeMillis() / 1000

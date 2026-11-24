@@ -38,6 +38,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.gnacho.netgrip.discovery.DiscoveredRouter
+import dev.gnacho.netgrip.domain.sites.SavedDevice
+import dev.gnacho.netgrip.domain.sites.SavedNetwork
 import dev.gnacho.netgrip.presentation.DiscoveryStatus
 
 @Composable
@@ -50,6 +52,8 @@ fun WelcomeScreen(
     onSelect: (DiscoveredRouter) -> Unit,
     onConnect: (DiscoveredRouter) -> Unit,
     onManual: () -> Unit,
+    savedNetworks: List<SavedNetwork> = emptyList(),
+    onSelectSaved: (SavedDevice) -> Unit = {},
 ) {
     Column(
         modifier = Modifier
@@ -74,7 +78,11 @@ fun WelcomeScreen(
                     )
                 }
             }
-            Spacer(Modifier.height(30.dp))
+            Spacer(Modifier.height(22.dp))
+            if (savedNetworks.any { it.devices.isNotEmpty() }) {
+                SavedNetworksSection(savedNetworks, onSelectSaved)
+                Spacer(Modifier.height(22.dp))
+            }
             Text(
                 "Tus routers, al alcance de la mano.",
                 style = MaterialTheme.typography.headlineMedium,
@@ -228,4 +236,53 @@ private fun discoveryStatusText(status: DiscoveryStatus, count: Int, supported: 
     status == DiscoveryStatus.Error -> "NO SE PUDO BUSCAR EN ESTA RED"
     count == 0 -> "BÚSQUEDA TERMINADA · 0 ROUTERS"
     else -> "BÚSQUEDA TERMINADA · $count ROUTERS"
+}
+
+/** Redes y routers ya guardados: entrar sin volver a buscarlos. */
+@Composable
+private fun SavedNetworksSection(
+    networks: List<SavedNetwork>,
+    onSelect: (SavedDevice) -> Unit,
+) {
+    Text(
+        "TUS REDES",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Spacer(Modifier.height(8.dp))
+    networks.filter { it.devices.isNotEmpty() }.forEach { network ->
+        Text(
+            network.name,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 2.dp, top = 4.dp, bottom = 4.dp),
+        )
+        network.devices.forEach { device ->
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 6.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(12.dp),
+                onClick = { onSelect(device) },
+            ) {
+                Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                    Text(
+                        device.label,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        device.url,
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
 }

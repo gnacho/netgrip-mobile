@@ -53,6 +53,8 @@ import dev.gnacho.netgrip.domain.panel.HealthLevel
 import dev.gnacho.netgrip.domain.panel.HealthScore
 import dev.gnacho.netgrip.domain.panel.HealthScoreCalculator
 import dev.gnacho.netgrip.domain.panel.HealthTone
+import dev.gnacho.netgrip.domain.sites.SavedDevice
+import dev.gnacho.netgrip.domain.sites.SavedNetwork
 import dev.gnacho.netgrip.presentation.SessionViewModel
 import dev.gnacho.netgrip.presentation.ShellTab
 import dev.gnacho.netgrip.presentation.ShellViewModel
@@ -99,6 +101,8 @@ fun ShellScreen(
     val sessionExpired by viewModel.sessionExpired.collectAsState()
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    var showNetworks by remember { mutableStateOf(false) }
+    var showDevices by remember { mutableStateOf(false) }
 
     LaunchedEffect(sessionExpired) {
         if (sessionExpired) sessionViewModel.onSessionExpired()
@@ -143,9 +147,12 @@ fun ShellScreen(
         val content: @Composable (Boolean) -> Unit = { showMenu ->
             ShellContent(
                 tab = tab,
-                host = host,
+                network = sessionViewModel.currentNetwork,
+                device = sessionViewModel.currentDevice,
                 health = health,
                 showMenu = showMenu,
+                onNetworkClick = { showNetworks = true },
+                onDeviceClick = { showDevices = true },
                 darkTheme = themeMode == ThemeMode.DARK,
                 onMenu = { scope.launch { drawerState.open() } },
                 onRefresh = { viewModel.refresh(tab) },
@@ -168,6 +175,13 @@ fun ShellScreen(
                     )
                 }
             }
+        }
+
+        if (showNetworks) {
+            NetworkSheet(sessionViewModel) { showNetworks = false }
+        }
+        if (showDevices) {
+            DeviceSheet(sessionViewModel) { showDevices = false }
         }
 
         when {
@@ -216,9 +230,12 @@ fun ShellScreen(
 @Composable
 private fun ShellContent(
     tab: ShellTab,
-    host: String,
+    network: SavedNetwork?,
+    device: SavedDevice?,
     health: HealthScore,
     showMenu: Boolean,
+    onNetworkClick: () -> Unit,
+    onDeviceClick: () -> Unit,
     darkTheme: Boolean,
     onMenu: () -> Unit,
     onRefresh: () -> Unit,
@@ -240,7 +257,12 @@ private fun ShellContent(
         ) {
             if (showMenu) {
                 IconButton(onClick = onMenu) {
-                    Icon(NetGripIcons.Menu, contentDescription = "Abrir menú", modifier = Modifier.size(20.dp))
+                    Icon(
+                        NetGripIcons.Menu,
+                        contentDescription = "Abrir menú",
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.onSurface,
+                    )
                 }
             } else {
                 Spacer(Modifier.width(8.dp))
@@ -253,16 +275,14 @@ private fun ShellContent(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    "$host · ${healthSummary(health)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
             }
             IconButton(onClick = onRefresh) {
-                Icon(NetGripIcons.Refresh, contentDescription = "Actualizar", modifier = Modifier.size(20.dp))
+                Icon(
+                    NetGripIcons.Refresh,
+                    contentDescription = "Actualizar",
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             if (showMenu) {
                 IconButton(onClick = onThemeToggle) {
@@ -270,6 +290,7 @@ private fun ShellContent(
                         if (darkTheme) NetGripIcons.Sun else NetGripIcons.Moon,
                         contentDescription = "Cambiar tema",
                         modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -282,6 +303,13 @@ private fun ShellContent(
                 )
             }
         }
+        SiteChips(
+            network = network,
+            device = device,
+            onNetworkClick = onNetworkClick,
+            onDeviceClick = onDeviceClick,
+            modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
+        )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Box(
             modifier = Modifier

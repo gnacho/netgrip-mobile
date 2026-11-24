@@ -14,6 +14,7 @@ import dev.gnacho.netgrip.data.dto.ClientReserveRequest
 import dev.gnacho.netgrip.data.dto.ClientWriteResponseDto
 import dev.gnacho.netgrip.data.dto.ClientsDto
 import dev.gnacho.netgrip.data.dto.EthPortsDto
+import dev.gnacho.netgrip.data.dto.FleetDto
 import dev.gnacho.netgrip.data.dto.HistoryDto
 import dev.gnacho.netgrip.data.dto.LoginRequest
 import dev.gnacho.netgrip.data.dto.MdnsDto
@@ -159,6 +160,10 @@ class NetGripApi(
 
     suspend fun selfUpdate(): ApiResult<SelfUpdateDto> =
         getData("/api/selfupdate") { json.decodeFromJsonElement(it) }
+
+    /** GET /api/fleet: routers del fleet del panel, para importarlos como dispositivos. */
+    suspend fun fleet(): ApiResult<FleetDto> =
+        getData("/api/fleet") { json.decodeFromJsonElement(it) }
 
     /** GET /api/clients/meta: nombres y tipos asignados a mano. */
     suspend fun clientMeta(): ApiResult<ClientMetaDto> =

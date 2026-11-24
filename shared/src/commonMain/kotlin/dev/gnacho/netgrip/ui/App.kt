@@ -56,6 +56,7 @@ fun App(
         NetGripLoginTheme {
             LoginScreen(
                 viewModel = sessionViewModel,
+                initialUrl = sessionViewModel.pendingLoginUrl,
                 platformBackHandler = platformBackHandler,
                 routerDiscovery = routerDiscovery,
                 isLocalNetworkGranted = isLocalNetworkGranted,

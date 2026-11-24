@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -172,6 +173,12 @@ private fun PortTile(port: EthPortDto, modifier: Modifier = Modifier) {
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                Icon(
+                    NetGripIcons.EthernetPort,
+                    contentDescription = null,
+                    modifier = Modifier.size(15.dp),
+                    tint = tone.content(),
+                )
                 Text(
                     port.name,
                     modifier = Modifier.weight(1f),

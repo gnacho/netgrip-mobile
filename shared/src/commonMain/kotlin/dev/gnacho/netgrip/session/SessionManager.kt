@@ -47,7 +47,27 @@ class SessionManager(private val storage: SecureStorage) {
         storage.delete(cookieKey(profileName))
     }
 
-    private fun cookieKey(profileName: String) = "session.$profileName"
+    /** Cookie guardada de un dispositivo, sin validarla. */
+    suspend fun cookie(profileName: String): String? = storage.read(cookieKey(profileName))
+
+    /**
+     * Migra la cookie del perfil unico antiguo al perfil de un dispositivo.
+     * Si el destino ya tiene cookie, no se toca.
+     */
+    suspend fun moveCookie(from: String, to: String) {
+        if (from == to) return
+        if (storage.read(cookieKey(to)) != null) return
+        val cookie = storage.read(cookieKey(from)) ?: return
+        storage.save(cookieKey(to), cookie)
+        storage.delete(cookieKey(from))
+    }
+
+    /**
+     * El perfil unico antiguo conserva su clave; los dispositivos usan
+     * "session.device.<id>" para no chocar con el ni entre ellos.
+     */
+    private fun cookieKey(profileName: String) =
+        if (profileName == DEFAULT_PROFILE) "session.$profileName" else "session.device.$profileName"
 
     companion object {
         const val DEFAULT_PROFILE = "default"
