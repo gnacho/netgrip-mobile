@@ -5,18 +5,21 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import dev.gnacho.netgrip.discovery.RouterDiscovery
 import dev.gnacho.netgrip.discovery.platformRouterDiscovery
 import dev.gnacho.netgrip.presentation.DiscoveryViewModel
 import dev.gnacho.netgrip.presentation.SessionViewModel
 import dev.gnacho.netgrip.presentation.UiState
+import kotlinx.coroutines.launch
 
 typealias PlatformBackHandler = @Composable (enabled: Boolean, onBack: () -> Unit) -> Unit
 
 @Composable
 fun LoginScreen(
     viewModel: SessionViewModel,
+    initialUrl: String? = null,
     platformBackHandler: PlatformBackHandler = { _, _ -> },
     routerDiscovery: RouterDiscovery = platformRouterDiscovery(),
     isLocalNetworkGranted: () -> Boolean = { true },
@@ -27,7 +30,10 @@ fun LoginScreen(
     val discoveryViewModel = remember {
         DiscoveryViewModel(routerDiscovery, isLocalNetworkGranted, requestLocalNetworkPermission)
     }
-    var target by remember { mutableStateOf<LoginTarget?>(null) }
+    val scope = rememberCoroutineScope()
+    var target by remember {
+        mutableStateOf<LoginTarget?>(initialUrl?.takeIf { it.isNotBlank() }?.let { LoginTarget(baseUrl = it) })
+    }
     var showManualEntry by remember { mutableStateOf(false) }
 
     platformBackHandler(target != null) {
@@ -59,6 +65,15 @@ fun LoginScreen(
                 target = LoginTarget.fromRouter(router)
             },
             onManual = { showManualEntry = true },
+            savedNetworks = viewModel.sites.networks,
+            onSelectSaved = { device ->
+                viewModel.resetLoginState()
+                scope.launch {
+                    if (!viewModel.trySwitchDevice(device.id)) {
+                        target = LoginTarget(baseUrl = device.url)
+                    }
+                }
+            },
         )
     }
 

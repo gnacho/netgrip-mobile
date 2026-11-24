@@ -82,7 +82,8 @@ class SessionViewModelTest {
         testScheduler.advanceUntilIdle()
 
         assertEquals(UiState.Ready, viewModel.uiState)
-        assertEquals(1, engine.requestHistory.size)
+        // login + board + mode
+        assertEquals(3, engine.requestHistory.size)
         assertEquals(testFingerprint, store.read("router.local")?.sha256)
         assertEquals("https://router.local:8080", SessionManager(storage).lastUrl())
     }
@@ -156,7 +157,8 @@ class SessionViewModelTest {
 
         assertEquals(UiState.Ready, viewModel.uiState)
         assertEquals<List<CertificatePin?>>(listOf(null), factory.pins)
-        assertEquals(1, engine.requestHistory.size)
+        // login + board + mode: el alta del dispositivo guarda nombre y rol
+        assertEquals(3, engine.requestHistory.size)
     }
 
     @Test
@@ -178,7 +180,8 @@ class SessionViewModelTest {
 
         assertEquals(UiState.Ready, viewModel.uiState)
         assertEquals<List<CertificatePin?>>(listOf(pin), factory.pins)
-        assertEquals(1, engine.requestHistory.size)
+        // me + board + mode
+        assertEquals(3, engine.requestHistory.size)
     }
 
     private fun runSessionTest(block: suspend TestScope.() -> Unit) = runTest {
@@ -216,6 +219,7 @@ class SessionViewModelTest {
         assertNull(viewModel.baseUrl)
         assertEquals(UiState.Idle, viewModel.uiState)
         assertNull(storage.data["session.default"])
+        assertTrue(storage.data.keys.none { it.startsWith("session.") })
         assertEquals("https://router.local:8080", storage.data["last.url"])
         assertEquals(requestsBefore, engine.requestHistory.size)
     }
