@@ -31,7 +31,7 @@ The GL.iNet mobile app adds: first time setup and password change, mesh setup, V
 
 GoodCloud is a cloud account plus a relay: the router opens an outbound tunnel to a GL.iNet server and the account reaches it there. NetGrip is a router local panel with an HTTP API. Two consequences for this plan:
 
-1. **Almost every GoodCloud management feature already exists in NetGrip's API.** The server registers 249 routes, including WiFi writes, clients, blocking, traffic accounting, DPI, quotas, parental control, firewall exposure, DDNS, WireGuard, OpenVPN, Tailscale, firmware update with progress, config snapshots with rollback, fleet operations and Telegram and ntfy notifications. The gap is mostly the Android UI, not the backend.
+1. **Almost every GoodCloud management feature already exists in NetGrip's API.** The server registers 248 API routes, including WiFi writes, clients, blocking, traffic accounting, DPI, quotas, parental control, firewall exposure, DDNS, WireGuard, OpenVPN, Tailscale, firmware update with progress, config snapshots with rollback, fleet operations and Telegram and ntfy notifications. The gap is mostly the Android UI, not the backend.
 2. **Reaching a router from outside the LAN is transport, not a feature.** NetGrip already ships three: DDNS entries, WireGuard and OpenVPN servers, and Tailscale. The app should guide the user to one of them and open the router through it. Building a fourth, NetGrip branded relay, is a separate product decision with hosting, identity and privacy costs.
 
 ## Verified state
@@ -40,8 +40,8 @@ GoodCloud is a cloud account plus a relay: the router opens an outbound tunnel t
 
 | Block | Endpoints |
 |---|---|
-| System and identity | `GET /api/board`, `GET /api/system`, `GET /api/history`, `GET /api/mode`, `POST /api/reboot` |
-| Firmware | `GET /api/selfupdate`, `POST /api/selfupdate`, `GET /api/selfupdate/status`, `GET|PUT /api/selfupdate/schedule` |
+| System and identity | `GET /api/board`, `GET /api/system`, `GET /api/history` (traffic ring), `GET /api/mode`, `POST /api/reboot`, `POST /api/password` |
+| Firmware | Router: `GET /api/update`, `POST /api/update` (sysupgrade), `GET /api/packages`, `POST /api/packages/upgrade`. NetGrip binary: `GET /api/selfupdate`, `POST /api/selfupdate`, `GET /api/selfupdate/status`, `GET|PUT /api/selfupdate/schedule` |
 | WiFi | `GET|POST /api/wifi`, `POST /api/wifi/radio`, `POST /api/wifichan`, `GET|POST /api/guestwifi`, `GET|POST /api/iotwifi`, `GET|POST /api/wifischedule` |
 | Clients | `GET /api/clients`, `GET|POST /api/clients/meta`, `POST /api/clients/block`, `POST /api/clients/reserve`, `POST /api/wol` |
 | Traffic | `GET /api/nlbwmon`, `GET /api/nlbwmon/top`, `POST /api/nlbwmon`, `GET /api/dpi`, `GET /api/dpi/apps`, `GET /api/dpi/timeline` |
@@ -76,7 +76,9 @@ Not present in the route table: device logs, LED control, email alerts, user acc
 | Guest and IoT WiFi | Yes | Missing | Screens plus writes | App |
 | WiFi schedule | Yes | Missing | Schedule editor | App |
 | Reboot | Yes | Missing | Confirmation, disconnect handling | App |
-| Firmware update and schedule | Yes | Read only | Update flow with progress and warnings | App |
+| Router firmware update (sysupgrade) | Yes | Missing | Update flow with confirmation and reconnect | App |
+| NetGrip binary update and schedule | Yes | Read only | Update flow with progress and schedule | App |
+| Administrator password change | Yes | Missing | Change with re-login and warning | App |
 | Real time per client traffic | Yes (nlbwmon, DPI) | Missing | Traffic screen and per client detail | App |
 | Quotas, QoS, parental | Yes | Missing | Editors per client | App |
 | Remote access status and setup | Yes (DDNS, WireGuard, OpenVPN, Tailscale, WAN exposure) | Missing | Remote access screen | App |
@@ -104,7 +106,7 @@ Not present in the route table: device logs, LED control, email alerts, user acc
 ### Phase 1: app only, API already exists
 
 1. WiFi writes: SSID and key, radio on or off, channel, guest network, IoT network, schedule.
-2. Reboot and firmware update, with confirmation, progress from `GET /api/selfupdate/status` and reconnect handling.
+2. Reboot, router firmware update, NetGrip binary update and administrator password change, with confirmation, progress and reconnect handling.
 3. Remote access screen: DDNS entries, Tailscale state and login link, WireGuard and OpenVPN status, WAN exposure toggles for ping, HTTPS and SSH.
 4. Notifications: Telegram and ntfy configuration with a test button.
 5. Diagnostics and tools: self test, ping, traceroute.
