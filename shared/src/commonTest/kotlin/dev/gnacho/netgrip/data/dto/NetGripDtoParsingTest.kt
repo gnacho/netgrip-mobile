@@ -202,7 +202,7 @@ class NetGripDtoParsingTest {
         assertEquals(8090, access.panel.httpPort)
         assertTrue(access.panel.httpsEnabled)
         assertEquals("60m", access.panel.sessionTtl)
-        assertEquals(443, access.luci.httpsPort)
+        assertEquals(443, access.web.httpsPort)
         assertEquals("22", access.ssh.port)
     }
 
