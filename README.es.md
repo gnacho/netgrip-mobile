@@ -14,11 +14,13 @@ App móvil nativa para [NetGrip](https://github.com/gnacho/netgrip), un panel de
 
 Este es el shell de solo lectura más las primeras acciones seguras sobre clientes. La pestaña de clientes permite renombrar un dispositivo, fijar su tipo, bloquearlo o desbloquearlo por banda, fijar o quitar su IP actual y enviar un paquete Wake on LAN. Toda escritura pide confirmación, muestra el error del servidor y vuelve a leer el estado del router. El resto de la app sigue en solo lectura.
 
+La pestaña WiFi permite renombrar una red, cambiar su clave y seguridad, ocultarla o dejar de emitirla, y ajustar canal, ancho y potencia de cada radio. Cada cambio se confirma, arma la ventana de reversión del router con cuenta atrás, no muestra la clave y relee el estado. Detalle en [docs/wifi-writes.md](docs/wifi-writes.md).
+
 La app guarda tantas redes y routers como haga falta. La cabecera tiene un selector de red y otro de dispositivo, cada uno con su hoja, y cada router conserva su propia sesión cifrada. Los dispositivos se añaden por URL con las credenciales en el momento, o se importan del fleet del router. Detalle en [docs/multi-network.md](docs/multi-network.md).
 
-Pasan 212 tests de host de Android y la compilación del APK de depuración. Las pruebas en emulador están hechas contra una API simulada. Falta la validación contra un router real.
+Pasan 238 tests de host de Android y la compilación del APK de depuración. Las pruebas en emulador están hechas contra una API simulada. Falta la validación contra un router real.
 
-El shell está descrito en [docs/readonly-shell.md](docs/readonly-shell.md), las escrituras en [docs/client-writes.md](docs/client-writes.md) y las redes y dispositivos en [docs/multi-network.md](docs/multi-network.md).
+El shell está descrito en [docs/readonly-shell.md](docs/readonly-shell.md), las escrituras en [docs/client-writes.md](docs/client-writes.md), las de WiFi en [docs/wifi-writes.md](docs/wifi-writes.md) y las redes y dispositivos en [docs/multi-network.md](docs/multi-network.md).
 
 ## Navegación
 

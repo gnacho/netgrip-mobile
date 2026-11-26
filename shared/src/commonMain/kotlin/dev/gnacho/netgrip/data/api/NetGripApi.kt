@@ -27,7 +27,13 @@ import dev.gnacho.netgrip.data.dto.ModeDto
 import dev.gnacho.netgrip.data.dto.SelfUpdateDto
 import dev.gnacho.netgrip.data.dto.SystemDto
 import dev.gnacho.netgrip.data.dto.WanDto
+import dev.gnacho.netgrip.data.dto.ConfirmIdRequest
+import dev.gnacho.netgrip.data.dto.ConfirmStatusDto
+import dev.gnacho.netgrip.data.dto.RadioEditRequest
+import dev.gnacho.netgrip.data.dto.RadioWriteResponse
 import dev.gnacho.netgrip.data.dto.WifiDto
+import dev.gnacho.netgrip.data.dto.WifiEditRequest
+import dev.gnacho.netgrip.data.dto.WifiWriteResponse
 import dev.gnacho.netgrip.data.dto.WirelessRadioDto
 import dev.gnacho.netgrip.data.dto.WolRequest
 import dev.gnacho.netgrip.data.dto.WolResponseDto
@@ -225,6 +231,30 @@ class NetGripApi(
     /** POST /api/wol: paquete magico, no persiste nada en el router. */
     suspend fun wakeOnLan(mac: String): ApiResult<WolResponseDto> =
         postJson("/api/wol", WolRequest(mac)) { json.decodeFromJsonElement(it) }
+
+    /**
+     * POST /api/wifi. Solo se llama desde el editor de una red, con
+     * confirmacion previa y con [WifiEditRequest.confirm] para que el router
+     * arme su ventana de auto-reversion.
+     */
+    suspend fun setWifi(edit: WifiEditRequest): ApiResult<WifiWriteResponse> =
+        postJson("/api/wifi", edit) { json.decodeFromJsonElement(it) }
+
+    /** POST /api/wifi/radio: canal de una radio, con healthcheck y rollback. */
+    suspend fun setWifiRadio(edit: RadioEditRequest): ApiResult<RadioWriteResponse> =
+        postJson("/api/wifi/radio", edit) { json.decodeFromJsonElement(it) }
+
+    /** GET /api/config/confirm: ventana de reversion pendiente, si la hay. */
+    suspend fun confirmStatus(): ApiResult<ConfirmStatusDto> =
+        getData("/api/config/confirm") { json.decodeFromJsonElement(it) }
+
+    /** POST /api/config/confirm: conserva los cambios aplicados. */
+    suspend fun keepConfirm(id: String): ApiResult<ConfirmStatusDto> =
+        postJson("/api/config/confirm", ConfirmIdRequest(id)) { json.decodeFromJsonElement(it) }
+
+    /** POST /api/config/confirm/rollback: deshace los cambios aplicados. */
+    suspend fun revertConfirm(id: String): ApiResult<ConfirmStatusDto> =
+        postJson("/api/config/confirm/rollback", ConfirmIdRequest(id)) { json.decodeFromJsonElement(it) }
     /** Historico de 24 h del puente LAN. Contadores acumulados, no tasas. */
     suspend fun history(): ApiResult<HistoryDto> =
         getData("/api/history") { json.decodeFromJsonElement(it) }

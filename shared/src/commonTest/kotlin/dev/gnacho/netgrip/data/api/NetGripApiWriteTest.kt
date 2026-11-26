@@ -2,6 +2,9 @@ package dev.gnacho.netgrip.data.api
 
 import dev.gnacho.netgrip.core.network.ApiResult
 import dev.gnacho.netgrip.data.dto.ClientMetaDto
+import dev.gnacho.netgrip.data.dto.ConfirmStatusDto
+import dev.gnacho.netgrip.data.dto.RadioEditRequest
+import dev.gnacho.netgrip.data.dto.WifiEditRequest
 import dev.gnacho.netgrip.data.dto.ClientWriteResponseDto
 import dev.gnacho.netgrip.data.dto.WolResponseDto
 import io.ktor.client.engine.mock.MockEngine
@@ -179,5 +182,109 @@ class NetGripApiWriteTest {
 
         assertIs<ApiResult.Ok<ClientWriteResponseDto>>(result)
         assertEquals(true, result.value.rolledBack)
+    }
+
+    @Test
+    fun elEditorWifiEnviaSoloLoQueCambia() = runTest {
+        val recorded = mutableListOf<Recorded>()
+        val api = apiWith(
+            responseBody = """{"status":"applied","state":{},"confirm":{"id":"abc","expires":1790000000}}""",
+            recorded = recorded,
+        )
+
+        val result = api.setWifi(
+            WifiEditRequest(
+                section = "default_radio0",
+                sections = listOf("default_radio0", "default_radio1"),
+                ssid = "casa",
+                key = "clave-larga",
+                encryption = "sae",
+                hidden = false,
+                disabled = false,
+                confirm = true,
+            ),
+        )
+
+        assertIs<ApiResult.Ok<*>>(result)
+        val request = recorded.single()
+        assertEquals(HttpMethod.Post, request.method)
+        assertEquals("/api/wifi", request.path)
+        assertEquals(
+            """{"section":"default_radio0","sections":["default_radio0","default_radio1"],""" +
+                """"ssid":"casa","key":"clave-larga","encryption":"sae","hidden":false,""" +
+                """"disabled":false,"confirm":true}""",
+            request.body,
+        )
+        assertTrue(request.body.contains("\"key\":\"clave-larga\""))
+    }
+
+    @Test
+    fun apagarUnaRedEnviaDisabledYNoEnviaClave() = runTest {
+        val recorded = mutableListOf<Recorded>()
+        val api = apiWith(responseBody = """{"status":"applied","state":{}}""", recorded = recorded)
+
+        api.setWifi(
+            WifiEditRequest(
+                section = "default_radio0",
+                sections = listOf("default_radio0", "default_radio1"),
+                ssid = "casa",
+                encryption = "psk2",
+                hidden = false,
+                disabled = true,
+                confirm = true,
+            ),
+        )
+
+        val body = recorded.single().body
+        assertTrue(body.contains("\"disabled\":true"))
+        assertTrue(!body.contains("\"key\""))
+    }
+
+    @Test
+    fun losCamposNulosNoViajanEnElCuerpo() = runTest {
+        val recorded = mutableListOf<Recorded>()
+        val api = apiWith(responseBody = """{"status":"applied","state":{}}""", recorded = recorded)
+
+        api.setWifi(WifiEditRequest(section = "default_radio0", ssid = "casa"))
+
+        assertEquals("""{"section":"default_radio0","ssid":"casa"}""", recorded.single().body)
+    }
+
+    @Test
+    fun laRadioEnviaCanalAnchoYPotencia() = runTest {
+        val recorded = mutableListOf<Recorded>()
+        val api = apiWith(responseBody = """{"status":"applied","state":{"name":"radio0"}}""", recorded = recorded)
+
+        api.setWifiRadio(
+            RadioEditRequest(radio = "radio0", channel = "36", htmode = "HE80", txpower = 20, confirm = true),
+        )
+
+        assertEquals("/api/wifi/radio", recorded.single().path)
+        assertEquals(
+            """{"radio":"radio0","channel":"36","htmode":"HE80","txpower":20,"confirm":true}""",
+            recorded.single().body,
+        )
+    }
+
+    @Test
+    fun laVentanaDeConfirmacionSeLeeMantieneYDeshace() = runTest {
+        val recorded = mutableListOf<Recorded>()
+        val api = apiWith(
+            responseBody = """{"pending":true,"id":"abc","expires":1790000000}""",
+            recorded = recorded,
+        )
+
+        val status = api.confirmStatus()
+        assertIs<ApiResult.Ok<ConfirmStatusDto>>(status)
+        assertTrue(status.value.pending)
+        assertEquals("abc", status.value.id)
+
+        api.keepConfirm("abc")
+        api.revertConfirm("abc")
+
+        assertEquals(listOf("/api/config/confirm", "/api/config/confirm", "/api/config/confirm/rollback"), recorded.map { it.path })
+        assertEquals(HttpMethod.Post, recorded[1].method)
+        assertEquals("""{"id":"abc"}""", recorded[1].body)
+        assertEquals("""{"id":"abc"}""", recorded[2].body)
     }
 }

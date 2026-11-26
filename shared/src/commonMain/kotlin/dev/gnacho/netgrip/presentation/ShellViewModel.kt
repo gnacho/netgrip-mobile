@@ -19,6 +19,9 @@ import dev.gnacho.netgrip.data.dto.LedDto
 import dev.gnacho.netgrip.data.dto.LogEntryDto
 import dev.gnacho.netgrip.data.dto.SystemDto
 import dev.gnacho.netgrip.data.dto.WanDto
+import dev.gnacho.netgrip.data.dto.ConfirmWindowDto
+import dev.gnacho.netgrip.data.dto.RadioEditRequest
+import dev.gnacho.netgrip.data.dto.WifiEditRequest
 import dev.gnacho.netgrip.data.dto.WifiUiDto
 import dev.gnacho.netgrip.data.dto.WirelessRadioDto
 import dev.gnacho.netgrip.domain.clients.ClientActionMessages
@@ -28,6 +31,7 @@ import dev.gnacho.netgrip.domain.clients.ClientReservationRules
 import dev.gnacho.netgrip.domain.clients.ClientWriteCheck
 import dev.gnacho.netgrip.domain.clients.MacAddress
 import dev.gnacho.netgrip.domain.clients.ReservationAction
+import dev.gnacho.netgrip.domain.format.nowEpochSeconds
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -68,6 +72,13 @@ data class ClientsState(
     val actionError: String? = null,
 )
 
+/** Ventana de auto-reversion que arma el router tras una escritura. */
+data class PendingConfirm(
+    val id: String,
+    val expires: Long,
+    val secondsLeft: Int,
+)
+
 /** Estado de la pestana WiFi. */
 data class WifiTabState(
     val loading: Boolean = false,
@@ -76,6 +87,13 @@ data class WifiTabState(
     val hasWifi: Boolean = false,
     val interfaces: List<WifiUiDto> = emptyList(),
     val radios: List<WirelessRadioDto> = emptyList(),
+    /** Escritura en curso: bloquea los botones de guardar. */
+    val busy: Boolean = false,
+    /** Resultado de la ultima escritura, para el aviso. */
+    val actionMessage: String? = null,
+    val actionError: String? = null,
+    /** Cambios aplicados que el router deshara si no se confirman. */
+    val pendingConfirm: PendingConfirm? = null,
 )
 
 /** Estado de la pestana Puertos. */
@@ -119,7 +137,11 @@ data class SettingsState(
  * Un 401 en cualquier lectura marca [sessionExpired] una sola vez y la shell
  * devuelve al login sin reintentar.
  */
-class ShellViewModel(private val api: NetGripApi) : ViewModel() {
+class ShellViewModel(
+    private val api: NetGripApi,
+    /** Reloj en segundos epoch; los tests lo fijan para la cuenta atras. */
+    private val now: () -> Long = ::nowEpochSeconds,
+) : ViewModel() {
 
     private val _panel = MutableStateFlow(PanelState())
     val panel: StateFlow<PanelState> = _panel.asStateFlow()
@@ -148,6 +170,7 @@ class ShellViewModel(private val api: NetGripApi) : ViewModel() {
     private var portsJob: Job? = null
     private var diagnosticsJob: Job? = null
     private var settingsJob: Job? = null
+    private var confirmJob: Job? = null
 
     fun ensurePanel() {
         if (_panel.value.loaded || panelJob?.isActive == true) return
@@ -328,12 +351,15 @@ class ShellViewModel(private val api: NetGripApi) : ViewModel() {
         if (wifiJob?.isActive == true) return
         wifiJob = viewModelScope.launch {
             _wifi.update { it.copy(loading = true, error = null) }
-            var next = WifiTabState(loading = false, loaded = true)
+            var next = _wifi.value.copy(loading = false, loaded = true)
             var failure: String? = null
             coroutineScope {
                 val wifi = async { api.wifi() }
                 val wireless = async { api.wireless() }
                 val mode = async { api.mode() }
+                // La ventana de reversion sobrevive a cerrar la app: se
+                // reanuda al cargar la pestana en vez de perderse.
+                val confirm = async { api.confirmStatus() }
                 val modeResult = mode.await()
                 when (val result = wifi.await()) {
                     is ApiResult.Ok -> next = next.copy(interfaces = result.value.interfaces)
@@ -349,9 +375,189 @@ class ShellViewModel(private val api: NetGripApi) : ViewModel() {
                         failure = failure ?: describe(result)
                     }
                 }
+                (confirm.await() as? ApiResult.Ok)?.let { status ->
+                    val id = status.value.id
+                    val expires = status.value.expires
+                    if (status.value.pending && id.isNotBlank() && expires > 0) {
+                        next = next.copy(pendingConfirm = pendingAt(id, expires))
+                        startConfirmTicker()
+                    }
+                }
                 next = next.copy(hasWifi = hasWifi(modeResult, next.interfaces.isNotEmpty()))
             }
             _wifi.value = next.copy(error = failure)
+        }
+    }
+
+    /**
+     * POST /api/wifi. Nunca pinta el cambio de forma optimista: relee
+     * /api/wifi y /api/wireless y solo entonces informa.
+     */
+    fun applyWifi(edit: WifiEditRequest) {
+        if (_wifi.value.busy) return
+        viewModelScope.launch {
+            _wifi.update { it.copy(busy = true, actionMessage = null, actionError = null) }
+            when (val result = api.setWifi(edit)) {
+                is ApiResult.Ok -> finishWifiWrite(
+                    status = result.value.status,
+                    rolledBack = result.value.rolledBack,
+                    error = result.value.error,
+                    window = result.value.confirm,
+                )
+                else -> setWifiFeedback(error = failWith(result))
+            }
+        }
+    }
+
+    /** POST /api/wifi/radio: canal, ancho y potencia de una radio. */
+    fun applyWifiRadio(edit: RadioEditRequest) {
+        if (_wifi.value.busy) return
+        viewModelScope.launch {
+            _wifi.update { it.copy(busy = true, actionMessage = null, actionError = null) }
+            when (val result = api.setWifiRadio(edit)) {
+                is ApiResult.Ok -> finishWifiWrite(
+                    status = result.value.status,
+                    rolledBack = result.value.rolledBack,
+                    error = result.value.error,
+                    window = result.value.confirm,
+                )
+                else -> setWifiFeedback(error = failWith(result))
+            }
+        }
+    }
+
+    /** Conserva los cambios aplicados y cierra la ventana de reversion. */
+    fun keepWifiChanges() {
+        val pending = _wifi.value.pendingConfirm ?: return
+        confirmJob?.cancel()
+        _wifi.update { it.copy(pendingConfirm = null) }
+        viewModelScope.launch {
+            when (val result = api.keepConfirm(pending.id)) {
+                is ApiResult.Ok -> setWifiFeedback(message = "Cambios confirmados")
+                else -> setWifiFeedback(error = failWith(result))
+            }
+        }
+    }
+
+    /** Deshace los cambios aplicados sin esperar a que caduque la ventana. */
+    fun revertWifiChanges() {
+        val pending = _wifi.value.pendingConfirm ?: return
+        confirmJob?.cancel()
+        _wifi.update { it.copy(pendingConfirm = null, busy = true) }
+        viewModelScope.launch {
+            when (val result = api.revertConfirm(pending.id)) {
+                is ApiResult.Ok -> {
+                    val readError = reloadWifi()
+                    setWifiFeedback(
+                        message = if (readError == null) "Cambios deshechos" else null,
+                        error = readError,
+                    )
+                }
+                else -> setWifiFeedback(error = failWith(result))
+            }
+        }
+    }
+
+    /** Limpia el aviso de la ultima escritura despues de mostrarlo. */
+    fun clearWifiFeedback() {
+        _wifi.update { it.copy(actionMessage = null, actionError = null) }
+    }
+
+    private suspend fun finishWifiWrite(
+        status: String,
+        rolledBack: Boolean,
+        error: String?,
+        window: ConfirmWindowDto?,
+    ) {
+        val serverError = error?.takeIf { it.isNotBlank() }
+        if (rolledBack || status == "rolled_back" || status == "failed") {
+            val readError = reloadWifi()
+            setWifiFeedback(
+                error = serverError ?: if (readError == null) {
+                    "El router deshizo el cambio y dejó la configuración como estaba"
+                } else {
+                    readError
+                },
+            )
+            return
+        }
+        val readError = reloadWifi()
+        val id = window?.id.orEmpty()
+        val expires = window?.expires ?: 0
+        if (id.isNotBlank() && expires > 0) {
+            _wifi.update { it.copy(pendingConfirm = pendingAt(id, expires)) }
+            startConfirmTicker()
+            setWifiFeedback(
+                message = if (readError == null) {
+                    "Cambio aplicado. Confírmalo antes de que el router lo deshaga."
+                } else {
+                    null
+                },
+                error = readError?.let { "El cambio se aplicó, pero no se pudo releer: $it" },
+            )
+            return
+        }
+        setWifiFeedback(
+            message = if (readError == null) "Cambios aplicados y verificados" else null,
+            error = readError,
+        )
+    }
+
+    /** Relee el estado WiFi sin tocar la deteccion de radios ni el modo. */
+    private suspend fun reloadWifi(): String? {
+        val wifi = api.wifi()
+        val wireless = api.wireless()
+        var next = _wifi.value
+        var readError: String? = null
+        when (wifi) {
+            is ApiResult.Ok -> next = next.copy(interfaces = wifi.value.interfaces, error = null)
+            else -> {
+                if (wifi == ApiResult.Unauthorized) _sessionExpired.value = true
+                readError = describe(wifi)
+            }
+        }
+        when (wireless) {
+            is ApiResult.Ok -> next = next.copy(radios = wireless.value)
+            else -> {
+                if (wireless == ApiResult.Unauthorized) _sessionExpired.value = true
+                if (readError == null) readError = describe(wireless)
+            }
+        }
+        _wifi.value = next
+        return readError
+    }
+
+    private fun setWifiFeedback(message: String? = null, error: String? = null) {
+        _wifi.update { it.copy(busy = false, actionMessage = message, actionError = error) }
+    }
+
+    private fun pendingAt(id: String, expires: Long): PendingConfirm =
+        PendingConfirm(id = id, expires = expires, secondsLeft = secondsLeft(expires))
+
+    private fun secondsLeft(expires: Long): Int =
+        (expires - now()).coerceAtLeast(0).toInt()
+
+    /**
+     * Cuenta atras de la ventana. Al llegar a cero el router ya revirtio, asi
+     * que se relee y se avisa: no se asume que el cambio sigue puesto.
+     */
+    private fun startConfirmTicker() {
+        confirmJob?.cancel()
+        confirmJob = viewModelScope.launch {
+            while (true) {
+                delay(1_000)
+                val pending = _wifi.value.pendingConfirm ?: return@launch
+                val left = secondsLeft(pending.expires)
+                if (left <= 0) {
+                    _wifi.update { it.copy(pendingConfirm = null) }
+                    val readError = reloadWifi()
+                    setWifiFeedback(
+                        error = readError ?: "El router deshizo el cambio al no confirmarse a tiempo",
+                    )
+                    return@launch
+                }
+                _wifi.update { it.copy(pendingConfirm = pending.copy(secondsLeft = left)) }
+            }
         }
     }
 
