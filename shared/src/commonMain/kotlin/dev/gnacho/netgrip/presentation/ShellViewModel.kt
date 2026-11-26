@@ -11,6 +11,8 @@ import dev.gnacho.netgrip.data.dto.ClientMetaEntryDto
 import dev.gnacho.netgrip.data.dto.ClientMetaDto
 import dev.gnacho.netgrip.data.dto.ClientsDto
 import dev.gnacho.netgrip.data.dto.EthPortDto
+import dev.gnacho.netgrip.data.dto.ConfigDiffDto
+import dev.gnacho.netgrip.data.dto.ConfigSnapshotDto
 import dev.gnacho.netgrip.data.dto.DdnsDto
 import dev.gnacho.netgrip.data.dto.GuestConfigRequest
 import dev.gnacho.netgrip.data.dto.GuestProbeDto
@@ -136,6 +138,21 @@ data class RemoteState(
     val actionError: String? = null,
 )
 
+/** Estado de la pestana Copias de configuracion. */
+data class SnapshotsState(
+    val loading: Boolean = false,
+    val loaded: Boolean = false,
+    val error: String? = null,
+    val snapshots: List<ConfigSnapshotDto> = emptyList(),
+    val busy: Boolean = false,
+    val actionMessage: String? = null,
+    val actionError: String? = null,
+    /** Cambios que aplicaria restaurar la copia [diffFor]. */
+    val diffFor: String? = null,
+    val diff: List<ConfigDiffDto>? = null,
+    val diffBusy: Boolean = false,
+)
+
 /** Estado de la pestana Puertos. */
 data class PortsState(
     val loading: Boolean = false,
@@ -218,6 +235,9 @@ class ShellViewModel(
     private val _remote = MutableStateFlow(RemoteState())
     val remote: StateFlow<RemoteState> = _remote.asStateFlow()
 
+    private val _snapshots = MutableStateFlow(SnapshotsState())
+    val snapshots: StateFlow<SnapshotsState> = _snapshots.asStateFlow()
+
     private val _ports = MutableStateFlow(PortsState())
     val ports: StateFlow<PortsState> = _ports.asStateFlow()
 
@@ -239,6 +259,7 @@ class ShellViewModel(
     private var wifiJob: Job? = null
     private var portsJob: Job? = null
     private var remoteJob: Job? = null
+    private var snapshotsJob: Job? = null
     private var diagnosticsJob: Job? = null
     private var settingsJob: Job? = null
     private var confirmJob: Job? = null
@@ -828,6 +849,124 @@ class ShellViewModel(
         }
     }
 
+    fun ensureSnapshots() {
+        if (_snapshots.value.loaded || snapshotsJob?.isActive == true) return
+        loadSnapshots()
+    }
+
+    fun loadSnapshots() {
+        if (snapshotsJob?.isActive == true) return
+        snapshotsJob = viewModelScope.launch {
+            _snapshots.update { it.copy(loading = true, error = null) }
+            when (val result = api.snapshots()) {
+                is ApiResult.Ok -> _snapshots.update {
+                    it.copy(loading = false, loaded = true, snapshots = result.value.snapshots, error = null)
+                }
+                else -> _snapshots.update {
+                    it.copy(loading = false, loaded = true, error = failWith(result))
+                }
+            }
+        }
+    }
+
+    /** POST /api/config/snapshot. */
+    fun createSnapshot() {
+        if (_snapshots.value.busy) return
+        viewModelScope.launch {
+            _snapshots.update { it.copy(busy = true, actionMessage = null, actionError = null) }
+            when (val result = api.createSnapshot()) {
+                is ApiResult.Ok -> {
+                    val read = api.snapshots()
+                    _snapshots.update { current ->
+                        current.copy(
+                            busy = false,
+                            snapshots = (read as? ApiResult.Ok)?.value?.snapshots ?: current.snapshots,
+                            actionMessage = "Copia ${result.value.id} guardada",
+                        )
+                    }
+                }
+                else -> _snapshots.update { it.copy(busy = false, actionError = failWith(result)) }
+            }
+        }
+    }
+
+    /**
+     * Diff contra lo que hay ahora: se guarda una copia temporal, se compara
+     * la elegida con ella y se borra la temporal. La temporal solo existe para
+     * tener con que comparar, porque el panel difea dos copias, no una copia
+     * contra el estado vivo.
+     */
+    fun showSnapshotDiff(id: String) {
+        if (_snapshots.value.diffBusy) return
+        viewModelScope.launch {
+            _snapshots.update { it.copy(diffBusy = true, diffFor = id, diff = null, actionError = null) }
+            val temporary = api.createSnapshot()
+            if (temporary !is ApiResult.Ok) {
+                _snapshots.update { it.copy(diffBusy = false, actionError = failWith(temporary)) }
+                return@launch
+            }
+            val tempId = temporary.value.id
+            val diff = api.diffSnapshots(id, tempId)
+            // La copia temporal no debe quedarse en la lista del router.
+            api.deleteSnapshot(tempId)
+            when (diff) {
+                is ApiResult.Ok -> _snapshots.update { it.copy(diffBusy = false, diff = diff.value.diffs) }
+                else -> _snapshots.update { it.copy(diffBusy = false, actionError = failWith(diff)) }
+            }
+        }
+    }
+
+    fun closeSnapshotDiff() {
+        _snapshots.update { it.copy(diffFor = null, diff = null) }
+    }
+
+    /** POST /api/config/rollback: restaura la copia y recarga la red. */
+    fun rollbackSnapshot(id: String) {
+        if (_snapshots.value.busy) return
+        viewModelScope.launch {
+            _snapshots.update { it.copy(busy = true, actionMessage = null, actionError = null) }
+            when (val result = api.rollbackSnapshot(id)) {
+                is ApiResult.Ok -> {
+                    _snapshots.update {
+                        it.copy(
+                            busy = false,
+                            diffFor = null,
+                            diff = null,
+                            actionMessage = "Configuración restaurada desde $id",
+                        )
+                    }
+                    loadSnapshots()
+                }
+                else -> _snapshots.update { it.copy(busy = false, actionError = failWith(result)) }
+            }
+        }
+    }
+
+    /** DELETE /api/config/snapshot?id. */
+    fun deleteSnapshot(id: String) {
+        if (_snapshots.value.busy) return
+        viewModelScope.launch {
+            _snapshots.update { it.copy(busy = true, actionMessage = null, actionError = null) }
+            when (val result = api.deleteSnapshot(id)) {
+                is ApiResult.Ok -> {
+                    val read = api.snapshots()
+                    _snapshots.update { current ->
+                        current.copy(
+                            busy = false,
+                            snapshots = (read as? ApiResult.Ok)?.value?.snapshots ?: current.snapshots,
+                            actionMessage = "Copia $id borrada",
+                        )
+                    }
+                }
+                else -> _snapshots.update { it.copy(busy = false, actionError = failWith(result)) }
+            }
+        }
+    }
+
+    fun clearSnapshotFeedback() {
+        _snapshots.update { it.copy(actionMessage = null, actionError = null) }
+    }
+
     fun ensureRemote() {
         if (_remote.value.loaded || remoteJob?.isActive == true) return
         loadRemote()
@@ -1326,6 +1465,7 @@ class ShellViewModel(
             ShellTab.CLIENTS -> loadClients()
             ShellTab.WIFI -> loadWifi()
             ShellTab.REMOTE -> loadRemote()
+            ShellTab.SNAPSHOTS -> loadSnapshots()
             ShellTab.PORTS -> loadPorts()
             ShellTab.DIAGNOSTICS -> loadDiagnostics()
             ShellTab.SETTINGS -> loadSettings()

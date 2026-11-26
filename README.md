@@ -18,13 +18,15 @@ The WiFi tab can rename a network, change its key and security, hide it or stop 
 
 The Settings tab can reboot the router, waiting until it answers again, change the admin password, which closes every panel session and returns to the login, install router firmware when owut reports it is safe, update the NetGrip panel and schedule that update daily or weekly inside a two hour window. See [docs/system-actions.md](docs/system-actions.md).
 
+A Snapshots tab stores copies of the router configuration, shows what restoring one would change (compared against a temporary copy of the live state) and restores it with a destructive confirmation. See [docs/config-snapshots.md](docs/config-snapshots.md).
+
 Settings can configure Telegram and ntfy alerts with their test buttons, and the Diagnostics tab runs a router self test plus ping, traceroute, DNS and port probes, printing what the router measured. See [docs/notifications-diagnostics.md](docs/notifications-diagnostics.md).
 
 A Remote access tab shows Tailscale, WireGuard, OpenVPN, DDNS and the WAN exposure toggles, recommends Tailscale and warns before publishing anything. See [docs/remote-access.md](docs/remote-access.md).
 
 The app can also hold as many networks and routers as needed. The header has a network selector and a device selector, each with its own sheet, and every router keeps its own encrypted session. Devices can be added by URL with inline credentials, or imported from the router fleet. See [docs/multi-network.md](docs/multi-network.md).
 
-275 Android host tests and the debug APK build pass. Emulator tests are done against a mock API. Validation against a real router is still pending.
+280 Android host tests and the debug APK build pass. Emulator tests are done against a mock API. Validation against a real router is still pending.
 
 The shell is described in [docs/readonly-shell.md](docs/readonly-shell.md), the client writes in [docs/client-writes.md](docs/client-writes.md), the WiFi writes in [docs/wifi-writes.md](docs/wifi-writes.md), the system actions in [docs/system-actions.md](docs/system-actions.md), remote access in [docs/remote-access.md](docs/remote-access.md) and the network and device handling in [docs/multi-network.md](docs/multi-network.md).
 
