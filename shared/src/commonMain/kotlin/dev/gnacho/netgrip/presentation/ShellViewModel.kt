@@ -26,6 +26,8 @@ import dev.gnacho.netgrip.data.dto.WanDto
 import dev.gnacho.netgrip.data.dto.ConfirmWindowDto
 import dev.gnacho.netgrip.data.dto.RadioEditRequest
 import dev.gnacho.netgrip.data.dto.WifiEditRequest
+import dev.gnacho.netgrip.data.dto.WifiScheduleDto
+import dev.gnacho.netgrip.data.dto.WifiScheduleStateDto
 import dev.gnacho.netgrip.data.dto.WifiUiDto
 import dev.gnacho.netgrip.data.dto.WirelessRadioDto
 import dev.gnacho.netgrip.domain.clients.ClientActionMessages
@@ -101,6 +103,8 @@ data class WifiTabState(
     /** Red de invitados e IoT: null mientras no se hayan leido. */
     val guest: GuestProbeDto? = null,
     val iot: IoTProbeDto? = null,
+    /** Horario semanal de cada interfaz WiFi. */
+    val schedules: List<WifiScheduleStateDto> = emptyList(),
 )
 
 /** Estado de la pestana Puertos. */
@@ -371,6 +375,7 @@ class ShellViewModel(
                 // no debe tumbar la pestana entera.
                 val guest = async { api.guestWifi() }
                 val iot = async { api.iotWifi() }
+                val schedules = async { api.wifiSchedules() }
                 val modeResult = mode.await()
                 when (val result = wifi.await()) {
                     is ApiResult.Ok -> next = next.copy(interfaces = result.value.interfaces)
@@ -391,6 +396,9 @@ class ShellViewModel(
                 }
                 (iot.await() as? ApiResult.Ok)?.let { result ->
                     next = next.copy(iot = result.value)
+                }
+                (schedules.await() as? ApiResult.Ok)?.let { result ->
+                    next = next.copy(schedules = result.value.schedules)
                 }
                 (confirm.await() as? ApiResult.Ok)?.let { status ->
                     val id = status.value.id
@@ -537,6 +545,38 @@ class ShellViewModel(
                 )
             readError != null -> setWifiFeedback(error = "$name aplicada, pero no se pudo releer: $readError")
             else -> setWifiFeedback(message = "$name aplicada y verificada")
+        }
+    }
+
+    /** POST /api/wifischedule: guarda el horario de una interfaz. */
+    fun applySchedule(schedule: WifiScheduleDto) {
+        if (_wifi.value.busy) return
+        viewModelScope.launch {
+            _wifi.update { it.copy(busy = true, actionMessage = null, actionError = null) }
+            when (val result = api.setWifiSchedule(schedule)) {
+                is ApiResult.Ok -> {
+                    val response = result.value
+                    val readError = when (val read = api.wifiSchedules()) {
+                        is ApiResult.Ok -> {
+                            _wifi.update { it.copy(schedules = read.value.schedules) }
+                            null
+                        }
+                        else -> failWith(read)
+                    }
+                    when {
+                        response.rolledBack || response.status == "rolled_back" || response.status == "failed" ->
+                            setWifiFeedback(
+                                error = response.error?.takeIf { it.isNotBlank() }
+                                    ?: "El router deshizo el horario y dejó el anterior",
+                            )
+                        readError != null -> setWifiFeedback(
+                            error = "Horario guardado, pero no se pudo releer: $readError",
+                        )
+                        else -> setWifiFeedback(message = "Horario guardado y verificado")
+                    }
+                }
+                else -> setWifiFeedback(error = failWith(result))
+            }
         }
     }
 

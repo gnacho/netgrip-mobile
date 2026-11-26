@@ -1,9 +1,8 @@
-#!/usr/bin/env python3
 """Mock del panel NetGrip para validar netgrip-mobile en el emulador.
 
 Sirve lo justo para entrar, ver la shell y probar las escrituras de WiFi,
-invitados e IoT. Las escrituras modifican estado en memoria, arman la ventana
-de reversion (MOCK_CONFIRM_SECS) y el rollback restaura la foto previa.
+invitados, IoT y horarios. Las escrituras modifican estado en memoria, arman
+la ventana de reversion (MOCK_CONFIRM_SECS) y el rollback restaura la foto.
 
 Uso:
     python3 tools/mock-api.py                  # 18090, router-demo
@@ -63,6 +62,12 @@ ESTADO = {
               "ifaces": ["phy0-ap1"], "clients": 1, "gl_conflict": False},
     "iot": {"active": False, "ssid": "Cosa", "band": "2g", "isolated": True,
             "ifaces": [], "clients": 0},
+    "schedules": [
+        {"section": "default_radio0", "ifname": "phy0-ap0", "ssid": "Casa",
+         "disabled": False, "off_by_schedule": False, "schedule": None},
+        {"section": "default_radio1", "ifname": "phy1-ap0", "ssid": "Casa",
+         "disabled": False, "off_by_schedule": False, "schedule": None},
+    ],
 }
 
 BASE = {
@@ -139,6 +144,9 @@ class Handler(BaseHTTPRequestHandler):
             self._wipe_expired()
             self._send(200, ESTADO["radios"])
             return
+        if path == "/api/wifischedule":
+            self._send(200, {"schedules": ESTADO["schedules"]})
+            return
         if path == "/api/guestwifi":
             self._send(200, ESTADO["guest"])
             return
@@ -198,6 +206,22 @@ class Handler(BaseHTTPRequestHandler):
                 if "txpower" in body:
                     radio["txpower"] = int(body["txpower"])
             self._risky({"status": "applied", "rolled_back": False, "state": ESTADO["radios"][0]})
+            return
+        if path == "/api/wifischedule":
+            for entry in ESTADO["schedules"]:
+                if entry["section"] != body.get("section"):
+                    continue
+                entry["schedule"] = {
+                    "section": body.get("section"),
+                    "enabled": bool(body.get("enabled")),
+                    "days": body.get("days") or [],
+                    "start": body.get("start", "00:00"),
+                    "end": body.get("end", "00:00"),
+                    "paused": bool(body.get("paused")),
+                }
+                entry["off_by_schedule"] = False
+            self._send(200, {"status": "applied", "rolled_back": False,
+                             "state": {"schedules": ESTADO["schedules"]}})
             return
         if path == "/api/guestwifi":
             g = ESTADO["guest"]

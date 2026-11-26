@@ -56,9 +56,12 @@ import dev.gnacho.netgrip.data.dto.IoTConfigRequest
 import dev.gnacho.netgrip.data.dto.IoTProbeDto
 import dev.gnacho.netgrip.data.dto.RadioEditRequest
 import dev.gnacho.netgrip.data.dto.WifiEditRequest
+import dev.gnacho.netgrip.data.dto.WifiScheduleDto
+import dev.gnacho.netgrip.data.dto.WifiScheduleStateDto
 import dev.gnacho.netgrip.data.dto.WifiUiDto
 import dev.gnacho.netgrip.data.dto.WirelessRadioDto
 import dev.gnacho.netgrip.domain.wifi.NetworkEditRules
+import dev.gnacho.netgrip.domain.wifi.ScheduleEditRules
 import dev.gnacho.netgrip.domain.wifi.WifiEditRules
 import dev.gnacho.netgrip.domain.wifi.WifiGroup
 import dev.gnacho.netgrip.domain.wifi.WifiGrouping
@@ -87,6 +90,7 @@ fun WifiScreen(viewModel: ShellViewModel) {
     var tuning by remember { mutableStateOf<WirelessRadioDto?>(null) }
     var guestOpen by remember { mutableStateOf(false) }
     var iotOpen by remember { mutableStateOf(false) }
+    var scheduleSection by remember { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(Unit) { viewModel.ensureWifi() }
 
@@ -157,10 +161,13 @@ fun WifiScreen(viewModel: ShellViewModel) {
                     items(groups, key = { it.ssid }) { group ->
                         WifiGroupCard(
                             group = group,
+                            interfaces = state.interfaces.filter { it.ssid == group.ssid },
+                            schedules = state.schedules,
                             radios = state.radios,
                             busy = state.busy,
                             onEdit = { editing = group },
                             onRadio = { radio -> tuning = radio },
+                            onSchedule = { section -> scheduleSection = section },
                         )
                     }
                     state.guest?.let { guest ->
@@ -222,6 +229,23 @@ fun WifiScreen(viewModel: ShellViewModel) {
         }
     }
 
+    scheduleSection?.let { section ->
+        val iface = state.interfaces.firstOrNull { it.section == section }
+        val current = state.schedules.firstOrNull { it.section == section }
+        ScheduleSheet(
+            section = section,
+            ssid = iface?.ssid ?: current?.ssid.orEmpty(),
+            band = iface?.band.orEmpty(),
+            state = current,
+            busy = state.busy,
+            onDismiss = { scheduleSection = null },
+            onApply = { schedule ->
+                scheduleSection = null
+                viewModel.applySchedule(schedule)
+            },
+        )
+    }
+
     tuning?.let { radio ->
         WifiRadioSheet(
             radio = radio,
@@ -267,10 +291,13 @@ private fun PendingConfirmCard(
 @Composable
 private fun WifiGroupCard(
     group: WifiGroup,
+    interfaces: List<WifiUiDto>,
+    schedules: List<WifiScheduleStateDto>,
     radios: List<WirelessRadioDto>,
     busy: Boolean,
     onEdit: () -> Unit,
     onRadio: (WirelessRadioDto) -> Unit,
+    onSchedule: (String) -> Unit,
 ) {
     NetGripCard(
         eyebrow = if (group.disabled) "Desactivada" else "Red WiFi",
@@ -364,6 +391,52 @@ private fun WifiGroupCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+        if (interfaces.isNotEmpty()) {
+            Spacer(Modifier.size(10.dp))
+            CardDivider()
+            Spacer(Modifier.size(6.dp))
+            Text(
+                "HORARIO",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.netGrip.faint,
+            )
+            interfaces.forEach { iface ->
+                val schedule = schedules.firstOrNull { it.section == iface.section }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                        Text(
+                            "${WifiEditRules.bandLabel(iface.band)} · " +
+                                ScheduleEditRules.stateLabel(
+                                    hasSchedule = schedule?.schedule != null,
+                                    enabled = schedule?.schedule?.enabled == true,
+                                    paused = schedule?.schedule?.paused == true,
+                                    offBySchedule = schedule?.offBySchedule == true,
+                                    disabled = schedule?.disabled == true,
+                                ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        schedule?.schedule?.takeIf { it.enabled }?.let { sched ->
+                            Text(
+                                ScheduleEditRules.daysSummary(sched.days.toSet()) + " · " +
+                                    ScheduleEditRules.windowLabel(sched.start, sched.end),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    TextButton(
+                        onClick = { onSchedule(iface.section) },
+                        enabled = !busy,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    ) { Text("Cambiar") }
+                }
+            }
         }
         Spacer(Modifier.size(10.dp))
         CardDivider()
@@ -1122,6 +1195,199 @@ private fun IoTSheet(
             onConfirm = {
                 confirmOpen = false
                 onApply(IoTConfigRequest(enabled = enabled, ssid = ssid.trim(), key = key, band = band))
+            },
+        )
+    }
+}
+
+/**
+ * Horario semanal de una interfaz. El router exige horas y dias validos
+ * aunque el horario este desactivado, asi que al apagarlo se envian los
+ * valores actuales saneados y todos los dias si no habia ninguno.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ScheduleSheet(
+    section: String,
+    ssid: String,
+    band: String,
+    state: WifiScheduleStateDto?,
+    busy: Boolean,
+    onDismiss: () -> Unit,
+    onApply: (WifiScheduleDto) -> Unit,
+) {
+    val existing = state?.schedule
+    var enabled by remember(section) { mutableStateOf(existing?.enabled == true) }
+    var days by remember(section) {
+        mutableStateOf((existing?.days ?: emptyList()).toSet())
+    }
+    var start by remember(section) { mutableStateOf(existing?.start?.takeIf { it.isNotBlank() } ?: "07:00") }
+    var end by remember(section) { mutableStateOf(existing?.end?.takeIf { it.isNotBlank() } ?: "23:00") }
+    var paused by remember(section) { mutableStateOf(existing?.paused == true) }
+    var confirmOpen by remember { mutableStateOf(false) }
+
+    val configError = ScheduleEditRules.configError(enabled, days, start, end)
+    val canSave = !busy && configError == null
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
+        dragHandle = null,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Horario WiFi", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+                if (band.isNotBlank()) Pill(WifiEditRules.bandLabel(band), Tone.NEUTRAL, dot = false)
+            }
+            Text(
+                if (ssid.isBlank()) "Interfaz $section" else "\"$ssid\" en esta banda",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            SwitchRow(
+                title = "Activar el horario",
+                subtitle = "Fuera de la ventana la red deja de emitirse y sus clientes se desconectan.",
+                checked = enabled,
+                onChange = { enabled = it },
+            )
+
+            Text("Días", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                ScheduleEditRules.dayNames.forEachIndexed { index, name ->
+                    val selected = index in days
+                    Surface(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clickable {
+                                days = if (selected) days - index else days + index
+                            },
+                        shape = CircleShape,
+                        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                        border = BorderStroke(
+                            1.dp,
+                            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                        ),
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                name,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                                color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+            Text(
+                ScheduleEditRules.daysSummary(days),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = start,
+                    onValueChange = { start = it.take(5) },
+                    label = { Text("Desde") },
+                    placeholder = { Text("07:00") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    isError = ScheduleEditRules.timeError(start, end) != null,
+                    modifier = Modifier.weight(1f),
+                )
+                OutlinedTextField(
+                    value = end,
+                    onValueChange = { end = it.take(5) },
+                    label = { Text("Hasta") },
+                    placeholder = { Text("23:00") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    isError = ScheduleEditRules.timeError(start, end) != null,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            ScheduleEditRules.timeError(start, end)?.let { InlineWarning(it) }
+            if (ScheduleEditRules.isTime(start) && ScheduleEditRules.isTime(end)) {
+                Text(
+                    ScheduleEditRules.windowLabel(start, end),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            if (existing != null) {
+                SwitchRow(
+                    title = "Apagar ahora",
+                    subtitle = "Manual y temporal: gana sobre la ventana hasta que lo quites.",
+                    checked = paused,
+                    onChange = { paused = it },
+                )
+            }
+
+            Banner(
+                "Al guardar, la red puede dejar de emitirse y sus clientes se desconectan. El router aplica el cambio con su propia comprobación.",
+                Tone.WARN,
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f),
+                ) { Text("Cancelar") }
+                Button(
+                    onClick = { confirmOpen = true },
+                    enabled = canSave,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    if (busy) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text("Guardar")
+                    }
+                }
+            }
+        }
+    }
+
+    if (confirmOpen) {
+        ConfirmDialog(
+            title = if (enabled) "Activar el horario" else "Quitar el horario",
+            body = if (enabled) {
+                "La red se emitirá ${ScheduleEditRules.daysSummary(days)} de " +
+                    ScheduleEditRules.windowLabel(start, end) +
+                    ". Fuera de esa ventana los clientes se desconectan."
+            } else {
+                "La red volverá a emitirse siempre. Ahora mismo " +
+                    if (state?.disabled == true) "está apagada por el horario." else "está emitiendo."
+            },
+            confirmLabel = "Aplicar",
+            onDismiss = { confirmOpen = false },
+            onConfirm = {
+                confirmOpen = false
+                // El servidor valida horas y dias aunque este desactivado.
+                val safeDays = days.ifEmpty { ScheduleEditRules.dayNames.indices.toSet() }
+                onApply(
+                    WifiScheduleDto(
+                        section = section,
+                        enabled = enabled,
+                        days = safeDays.sorted(),
+                        start = if (ScheduleEditRules.isTime(start)) start else "00:00",
+                        end = if (ScheduleEditRules.isTime(end)) end else "00:00",
+                        paused = if (enabled) paused else false,
+                    ),
+                )
             },
         )
     }

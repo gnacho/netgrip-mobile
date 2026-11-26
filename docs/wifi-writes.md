@@ -15,9 +15,10 @@ router's rollback window, re-reads the state and never shows the key.
 | Undo the applied change | `POST /api/config/confirm/rollback` | Restores the snapshot taken by the server |
 | Guest network | `GET|POST /api/guestwifi` | The router snapshots network, DHCP, firewall and wireless and reloads them |
 | IoT network | `GET|POST /api/iotwifi` | The router snapshots wireless and reloads the radio |
+| WiFi schedule | `GET|POST /api/wifischedule` | Outside the window the interface stops broadcasting and its clients disconnect |
 
-Guest network and IoT network are included. WiFi schedules are still open,
-the last part of #20.
+Guest network, IoT network and WiFi schedules are included: this completes
+#20.
 
 ## Contract
 
@@ -74,6 +75,20 @@ to keep a snapshot and arm a 120 s auto-revert window.
   therefore use a 100 s timeout instead of the app default, and the result is
   read from the response and confirmed with a re-read.
 
+## Schedules
+
+- One schedule per wireless interface, not per SSID: the card lists each band
+  separately with its state (no schedule, off by hand, schedule disabled, off
+  by schedule right now, inside the window).
+- Days use the router numbering, 0 = Sunday, shown as D L M X J V S. A window
+  whose end is earlier than its start crosses midnight and is labelled so.
+- The server validates days and times even when the schedule is disabled, so
+  disabling sends the current values sanitised and every day when none is set.
+- `paused` is the manual "off now" override and only exists once the interface
+  already has a schedule.
+- Neither endpoint arms the 120 s window: the result comes from the response
+  and is confirmed with a re-read of every interface.
+
 ## Verification after a write
 
 - On `status: applied` with a `confirm` window, the app opens the window, shows
@@ -93,7 +108,8 @@ to keep a snapshot and arm a 120 s auto-revert window.
 ./gradlew :shared:testAndroidHostTest :shared:compileKotlinIosSimulatorArm64 :androidApp:assembleDebug
 ```
 
-Host tests cover guest and IoT request bodies, the "key only when creating"
+Host tests cover the schedule body, time and day limits, the midnight window,
+the state labels, guest and IoT request bodies, the "key only when creating"
 rule, subnet validation, the rollback paths, the encryption catalog and its "open only if already open"
 rule, SSID and key limits, the change summary, channels and widths per band,
 the exact POST bodies (including omitted nulls), the confirm/keep/rollback
