@@ -28,6 +28,8 @@ import dev.gnacho.netgrip.data.dto.ParentalProbeDto
 import dev.gnacho.netgrip.data.dto.ParentalRuleDto
 import dev.gnacho.netgrip.data.dto.QuotaDto
 import dev.gnacho.netgrip.data.dto.QuotaProbeDto
+import dev.gnacho.netgrip.data.dto.StorageMountRequest
+import dev.gnacho.netgrip.data.dto.StorageProbeDto
 import dev.gnacho.netgrip.data.dto.GuestConfigRequest
 import dev.gnacho.netgrip.data.dto.GuestProbeDto
 import dev.gnacho.netgrip.data.dto.HistoryEntryDto
@@ -272,6 +274,18 @@ data class FleetState(
     val batch: FleetBatchState = FleetBatchState(),
 )
 
+/** Estado de la pestana Almacenamiento: discos del router. */
+data class StorageState(
+    val loading: Boolean = false,
+    val loaded: Boolean = false,
+    val error: String? = null,
+    val probe: StorageProbeDto? = null,
+    /** Dispositivo o punto de montaje cuya escritura está en curso. */
+    val busy: String? = null,
+    val actionMessage: String? = null,
+    val actionError: String? = null,
+)
+
 /** Estado de la pestana Diagnostico. */
 data class DiagnosticsState(
     val loading: Boolean = false,
@@ -367,6 +381,9 @@ class ShellViewModel(
     private val _fleet = MutableStateFlow(FleetState())
     val fleet: StateFlow<FleetState> = _fleet.asStateFlow()
 
+    private val _storage = MutableStateFlow(StorageState())
+    val storage: StateFlow<StorageState> = _storage.asStateFlow()
+
     private val _sessionExpired = MutableStateFlow(false)
     val sessionExpired: StateFlow<Boolean> = _sessionExpired.asStateFlow()
 
@@ -384,6 +401,7 @@ class ShellViewModel(
     private var trafficJob: Job? = null
     private var policiesJob: Job? = null
     private var fleetJob: Job? = null
+    private var storageJob: Job? = null
     private var settingsJob: Job? = null
     private var confirmJob: Job? = null
 
@@ -1504,6 +1522,75 @@ class ShellViewModel(
         }
     }
 
+    fun ensureStorage() {
+        if (_storage.value.loaded || storageJob?.isActive == true) return
+        loadStorage()
+    }
+
+    /** GET /api/storage: los discos que ve el router, solo lectura. */
+    fun loadStorage() {
+        if (storageJob?.isActive == true) return
+        storageJob = viewModelScope.launch {
+            _storage.update { it.copy(loading = true, error = null) }
+            when (val result = api.storage()) {
+                is ApiResult.Ok -> _storage.update {
+                    it.copy(loading = false, loaded = true, probe = result.value, error = null)
+                }
+                else -> {
+                    if (result == ApiResult.Unauthorized) _sessionExpired.value = true
+                    _storage.update {
+                        it.copy(loading = false, loaded = true, error = describe(result))
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * POST /api/storage/mount. El router deja la entrada de fstab y devuelve
+     * el probe ya releido: se pinta ese, no el que esperaba la app.
+     */
+    fun mountStorage(device: String, target: String, readOnly: Boolean) {
+        if (_storage.value.busy != null) return
+        viewModelScope.launch {
+            _storage.update {
+                it.copy(busy = device, actionMessage = null, actionError = null)
+            }
+            when (val result = api.mountStorage(StorageMountRequest(device, target, readOnly))) {
+                is ApiResult.Ok -> _storage.update {
+                    it.copy(
+                        busy = null,
+                        probe = result.value,
+                        actionMessage = "${device.substringAfterLast('/')} montado en $target",
+                    )
+                }
+                else -> _storage.update { it.copy(busy = null, actionError = failWith(result)) }
+            }
+        }
+    }
+
+    /** POST /api/storage/unmount. Solo para montajes creados por el panel. */
+    fun unmountStorage(target: String) {
+        if (_storage.value.busy != null) return
+        viewModelScope.launch {
+            _storage.update { it.copy(busy = target, actionMessage = null, actionError = null) }
+            when (val result = api.unmountStorage(target)) {
+                is ApiResult.Ok -> _storage.update {
+                    it.copy(
+                        busy = null,
+                        probe = result.value,
+                        actionMessage = "Desmontado $target",
+                    )
+                }
+                else -> _storage.update { it.copy(busy = null, actionError = failWith(result)) }
+            }
+        }
+    }
+
+    fun clearStorageFeedback() {
+        _storage.update { it.copy(actionMessage = null, actionError = null) }
+    }
+
     fun ensureSnapshots() {
         if (_snapshots.value.loaded || snapshotsJob?.isActive == true) return
         loadSnapshots()
@@ -2121,6 +2208,7 @@ class ShellViewModel(
             ShellTab.WIFI -> loadWifi()
             ShellTab.REMOTE -> loadRemote()
             ShellTab.SNAPSHOTS -> loadSnapshots()
+            ShellTab.STORAGE -> loadStorage()
             ShellTab.PORTS -> loadPorts()
             ShellTab.TRAFFIC -> {
                 loadTraffic()

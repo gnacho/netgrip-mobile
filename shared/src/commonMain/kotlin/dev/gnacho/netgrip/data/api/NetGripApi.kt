@@ -62,6 +62,9 @@ import dev.gnacho.netgrip.data.dto.ParentalProbeDto
 import dev.gnacho.netgrip.data.dto.ParentalRuleDto
 import dev.gnacho.netgrip.data.dto.QuotaDto
 import dev.gnacho.netgrip.data.dto.QuotaProbeDto
+import dev.gnacho.netgrip.data.dto.StorageMountRequest
+import dev.gnacho.netgrip.data.dto.StorageProbeDto
+import dev.gnacho.netgrip.data.dto.StorageUnmountRequest
 import dev.gnacho.netgrip.data.dto.SelfTestDto
 import dev.gnacho.netgrip.data.dto.OpenVpnDto
 import dev.gnacho.netgrip.data.dto.RebootResponseDto
@@ -297,6 +300,26 @@ class NetGripApi(
     /** POST /api/fleet/discovery-config. */
     suspend fun setFleetDiscoveryConfig(enabled: Boolean): ApiResult<FleetDiscoveryConfigDto> =
         postJson("/api/fleet/discovery-config", FleetDiscoveryConfigDto(enabled)) {
+            json.decodeFromJsonElement(it)
+        }
+
+    /** GET /api/storage: discos y servicios de almacenamiento del router. */
+    suspend fun storage(): ApiResult<StorageProbeDto> =
+        getData("/api/storage") { json.decodeFromJsonElement(it) }
+
+    /**
+     * POST /api/storage/mount: monta [device] en [target] y deja la entrada de
+     * fstab. Devuelve el probe ya releido, asi que no hace falta otra lectura.
+     */
+    suspend fun mountStorage(request: StorageMountRequest): ApiResult<StorageProbeDto> =
+        postJson("/api/storage/mount", request, longRunning = true) { json.decodeFromJsonElement(it) }
+
+    /**
+     * POST /api/storage/unmount: desmonta y quita la entrada de fstab. El
+     * router solo lo acepta si el montaje lo creo el panel.
+     */
+    suspend fun unmountStorage(target: String): ApiResult<StorageProbeDto> =
+        postJson("/api/storage/unmount", StorageUnmountRequest(target), longRunning = true) {
             json.decodeFromJsonElement(it)
         }
 

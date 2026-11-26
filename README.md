@@ -30,7 +30,9 @@ A Traffic tab shows who moved the most bytes and which protocols and application
 
 A Fleet tab lists the routers the panel manages together, checks one or all of them for version and reachability, shows which peers are announcing themselves on the LAN and adopts them with their password, which the panel verifies before storing anything; the adopted router is also added to the network chosen in the dialog. It also updates the ones with a new version in a batch, one after another, reporting per device what was updated, what could not be confirmed, what failed and what was skipped and why, and it can be stopped at the next poll. See [docs/fleet.md](docs/fleet.md).
 
-342 Android host tests and the debug APK build pass. Emulator tests are done against a mock API. Validation against a real router is still pending.
+A Storage tab lists the disks the router sees and mounts or unmounts them: the mount dialog takes the mount point and a read-only switch, and only mounts created from the panel can be unmounted, so a hand-made one is shown without a button. See [docs/storage.md](docs/storage.md).
+
+356 Android host tests and the debug APK build pass. Emulator tests are done against a mock API. Validation against a real router is still pending.
 
 The shell is described in [docs/readonly-shell.md](docs/readonly-shell.md), the client writes in [docs/client-writes.md](docs/client-writes.md), the WiFi writes in [docs/wifi-writes.md](docs/wifi-writes.md), the traffic readings in [docs/traffic.md](docs/traffic.md), the system actions in [docs/system-actions.md](docs/system-actions.md), remote access in [docs/remote-access.md](docs/remote-access.md) and the network and device handling in [docs/multi-network.md](docs/multi-network.md).
 

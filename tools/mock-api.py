@@ -78,6 +78,29 @@ ESTADO = {
          "port": 8080, "seen_at": ""},
     ],
     "discovery": True,
+    # Almacenamiento: dos discos, uno montado por el panel y otro sin montar.
+    "storage": {
+        "applicable": True,
+        "supported": True,
+        "usb_present": True,
+        "usb_storage_loaded": True,
+        "devices": [
+            {"name": "sda1", "path": "/dev/sda1", "fs_type": "ext4",
+             "size_bytes": 128000000000, "used_bytes": 32000000000,
+             "free_bytes": 96000000000, "mount_point": "/mnt/sda1", "managed": True},
+            {"name": "sdb1", "path": "/dev/sdb1", "fs_type": "vfat",
+             "size_bytes": 32000000000, "used_bytes": 4000000000,
+             "free_bytes": 28000000000},
+            # Montado a mano antes de que existiera el panel: se ve, no se toca.
+            {"name": "sdc1", "path": "/dev/sdc1", "fs_type": "ntfs",
+             "size_bytes": 64000000000, "used_bytes": 16000000000,
+             "free_bytes": 48000000000, "mount_point": "/mnt/manual", "managed": False},
+        ],
+        "services": [
+            {"name": "samba4", "running": True, "enabled": True,
+             "installed": True, "available": True, "paths": ["/mnt/sda1"]},
+        ],
+    },
     "firmware_started": False,
     "schedule": {"config": {"enabled": False, "intervalHours": 168,
                             "windowStart": 3, "windowEnd": 5},
@@ -383,6 +406,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/fleet/discovery-config":
             self._send(200, {"enabled": ESTADO["discovery"]})
+            return
+        if path == "/api/storage":
+            self._send(200, ESTADO["storage"])
             return
         if path in BASE:
             self._send(200, BASE[path])
@@ -700,6 +726,35 @@ class Handler(BaseHTTPRequestHandler):
                 "update_available": False,
             })
             self._send(200, {"status": "adopted"})
+            return
+        if path == "/api/storage/mount":
+            device = str(body.get("device", ""))
+            target = str(body.get("target", "")).rstrip("/")
+            if not target.startswith("/mnt/"):
+                self._send(400, {"error": 'invalid mount point "%s"' % target})
+                return
+            disk = next((d for d in ESTADO["storage"]["devices"] if d["path"] == device), None)
+            if disk is None:
+                self._send(400, {"error": 'invalid device "%s"' % device})
+                return
+            disk["mount_point"] = target
+            disk["managed"] = True
+            disk["read_only"] = bool(body.get("read_only"))
+            self._send(200, ESTADO["storage"])
+            return
+        if path == "/api/storage/unmount":
+            target = str(body.get("target", ""))
+            disk = next(
+                (d for d in ESTADO["storage"]["devices"] if d.get("mount_point") == target),
+                None,
+            )
+            if disk is None or not disk.get("managed"):
+                self._send(400, {"error": "%s was not mounted from this panel" % target})
+                return
+            disk.pop("mount_point", None)
+            disk.pop("managed", None)
+            disk.pop("read_only", None)
+            self._send(200, ESTADO["storage"])
             return
         self._send(404, {"error": "not found"})
 
