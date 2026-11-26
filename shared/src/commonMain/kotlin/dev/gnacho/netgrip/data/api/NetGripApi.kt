@@ -33,7 +33,10 @@ import dev.gnacho.netgrip.data.dto.PasswordChangeRequest
 import dev.gnacho.netgrip.data.dto.RebootResponseDto
 import dev.gnacho.netgrip.data.dto.ModeDto
 import dev.gnacho.netgrip.data.dto.SelfUpdateDto
+import dev.gnacho.netgrip.data.dto.SelfUpdateStatusDto
 import dev.gnacho.netgrip.data.dto.SystemDto
+import dev.gnacho.netgrip.data.dto.UpdateCheckDto
+import dev.gnacho.netgrip.data.dto.UpdateStartDto
 import dev.gnacho.netgrip.data.dto.WanDto
 import dev.gnacho.netgrip.data.dto.ConfirmIdRequest
 import dev.gnacho.netgrip.data.dto.ConfirmStatusDto
@@ -311,6 +314,25 @@ class NetGripApi(
     /** POST /api/iotwifi, con el mismo healthcheck que invitados. */
     suspend fun setIoTWifi(cfg: IoTConfigRequest): ApiResult<NetworkWriteResponse<IoTProbeDto>> =
         postJson("/api/iotwifi", cfg, longRunning = true) { json.decodeFromJsonElement(it) }
+
+    /** GET /api/update: estado del firmware segun `owut check`. */
+    suspend fun updateCheck(): ApiResult<UpdateCheckDto> =
+        getData("/api/update") { json.decodeFromJsonElement(it) }
+
+    /**
+     * POST /api/update. El router descarga el firmware, lo instala y se
+     * reinicia: la respuesta solo dice que empezo.
+     */
+    suspend fun startFirmwareUpdate(): ApiResult<UpdateStartDto> =
+        postJson("/api/update", EmptyRequest(confirm = true)) { json.decodeFromJsonElement(it) }
+
+    /** GET /api/selfupdate/status: fase y progreso del panel. */
+    suspend fun selfUpdateStatus(): ApiResult<SelfUpdateStatusDto> =
+        getData("/api/selfupdate/status") { json.decodeFromJsonElement(it) }
+
+    /** POST /api/selfupdate: descarga y reinicia el panel. */
+    suspend fun startSelfUpdate(): ApiResult<SelfUpdateStatusDto> =
+        postJson("/api/selfupdate", EmptyRequest(confirm = true)) { json.decodeFromJsonElement(it) }
 
     /** GET /api/wifischedule: horario de cada interfaz WiFi. */
     suspend fun wifiSchedules(): ApiResult<WifiSchedulesDto> =

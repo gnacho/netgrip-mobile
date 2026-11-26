@@ -1,7 +1,8 @@
 # Router reboot and password
 
-First half of #21: the two system actions that cut the connection. Firmware and
-the NetGrip self update stay open.
+Part of #21: the actions that cut the connection (reboot, password) and the two
+updates (router firmware, NetGrip panel). The NetGrip update schedule stays
+open.
 
 ## Scope
 
@@ -9,6 +10,8 @@ the NetGrip self update stay open.
 |---|---|---|
 | Reboot the router | `POST /api/reboot` | Confirmation, then a "rebooting" state until `/api/me` answers again |
 | Change the admin password | `POST /api/password` | Confirmation with current, new and repeated password; afterwards the login with the new one |
+| Install router firmware | `GET|POST /api/update` | Version from and to, owut warnings, and an explicit acknowledgement before starting |
+| Update the NetGrip panel | `POST /api/selfupdate` | Confirmation naming the version; only the panel restarts |
 
 ## Contract
 
@@ -18,6 +21,9 @@ Checked against `internal/server/server.go` and `internal/modules`.
 |---|---|---|
 | `POST /api/reboot` | `{}` | `{"started":true}` before the router goes down |
 | `POST /api/password` | `{"current","next"}` | `204` and every panel session dies; `400 {"error"}` when the current password is wrong |
+| `GET /api/update` | none | `owut check -v` parsed: versions, warnings, `safe_to_proceed`, missing packages |
+| `POST /api/update` | `{"confirm":true}` | `{"started":true,"reboot_pending":true}` before the router downloads and flashes |
+| `POST /api/selfupdate` | `{"confirm":true}` | The panel starts downloading and restarting |
 
 ## Rules
 
@@ -39,13 +45,32 @@ Checked against `internal/server/server.go` and `internal/modules`.
 - Errors are shown where they can be fixed (card or dialog), not lost in a
   snackbar.
 
+## Firmware and panel updates
+
+- **Firmware** is offered only when the router reports a newer version, a
+  different version (`same_version` false) and `owut` present. If owut says it
+  is not safe (`safe_to_proceed` and `safe_with_reinstall` false) the button is
+  disabled and the missing packages are listed.
+- Installing needs a second step: a checkbox acknowledging that the router will
+  restart and may take several minutes, plus the warning that a firmware that
+  does not boot may need physical access to recover. The version being
+  installed is always named.
+- After accepting, the app waits up to 12 minutes (every 5 s) for `/api/me`.
+  A session that does not survive sends the user to the login; silence is
+  reported as "still not answering", never as success.
+- **NetGrip panel** has its own button, named with the target version, and says
+  that only the panel restarts. The wait is shorter (every 2 s) because the
+  process comes back in seconds.
+- Warnings from owut are listed verbatim; the app does not summarise them into
+  "safe".
+
 ## Gates
 
 ```
 ./gradlew :shared:testAndroidHostTest :shared:compileKotlinIosSimulatorArm64 :androidApp:assembleDebug
 ```
 
-Host tests cover the reboot body, the polling until the router returns, the
+Host tests cover the firmware and panel update bodies, their waits, the reboot body, the polling until the router returns, the
 timeout message, the lost session, and the password success and rejection
 paths.
 
