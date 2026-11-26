@@ -11,17 +11,23 @@ import dev.gnacho.netgrip.data.dto.ClientMetaEntryDto
 import dev.gnacho.netgrip.data.dto.ClientMetaDto
 import dev.gnacho.netgrip.data.dto.ClientsDto
 import dev.gnacho.netgrip.data.dto.EthPortDto
+import dev.gnacho.netgrip.data.dto.DdnsDto
 import dev.gnacho.netgrip.data.dto.GuestConfigRequest
 import dev.gnacho.netgrip.data.dto.GuestProbeDto
 import dev.gnacho.netgrip.data.dto.HistoryEntryDto
 import dev.gnacho.netgrip.data.dto.IoTConfigRequest
 import dev.gnacho.netgrip.data.dto.IoTProbeDto
+import dev.gnacho.netgrip.data.dto.OpenVpnDto
+import dev.gnacho.netgrip.data.dto.RemoteAccessDto
+import dev.gnacho.netgrip.data.dto.RemoteAccessRequest
 import dev.gnacho.netgrip.data.dto.MdnsDto
 import dev.gnacho.netgrip.data.dto.ModeDto
 import dev.gnacho.netgrip.data.dto.SelfUpdateDto
 import dev.gnacho.netgrip.data.dto.LedDto
 import dev.gnacho.netgrip.data.dto.LogEntryDto
 import dev.gnacho.netgrip.data.dto.SystemDto
+import dev.gnacho.netgrip.data.dto.TailscaleDto
+import dev.gnacho.netgrip.data.dto.WireGuardDto
 import dev.gnacho.netgrip.data.dto.SelfUpdateScheduleDto
 import dev.gnacho.netgrip.data.dto.SelfUpdateScheduleRequest
 import dev.gnacho.netgrip.data.dto.UpdateCheckDto
@@ -110,6 +116,21 @@ data class WifiTabState(
     val schedules: List<WifiScheduleStateDto> = emptyList(),
 )
 
+/** Estado de la pestana Acceso remoto. */
+data class RemoteState(
+    val loading: Boolean = false,
+    val loaded: Boolean = false,
+    val error: String? = null,
+    val tailscale: TailscaleDto? = null,
+    val wireguard: WireGuardDto? = null,
+    val openvpn: OpenVpnDto? = null,
+    val ddns: DdnsDto? = null,
+    val exposure: RemoteAccessDto? = null,
+    val busy: Boolean = false,
+    val actionMessage: String? = null,
+    val actionError: String? = null,
+)
+
 /** Estado de la pestana Puertos. */
 data class PortsState(
     val loading: Boolean = false,
@@ -179,6 +200,9 @@ class ShellViewModel(
     private val _wifi = MutableStateFlow(WifiTabState())
     val wifi: StateFlow<WifiTabState> = _wifi.asStateFlow()
 
+    private val _remote = MutableStateFlow(RemoteState())
+    val remote: StateFlow<RemoteState> = _remote.asStateFlow()
+
     private val _ports = MutableStateFlow(PortsState())
     val ports: StateFlow<PortsState> = _ports.asStateFlow()
 
@@ -199,6 +223,7 @@ class ShellViewModel(
     private var clientsJob: Job? = null
     private var wifiJob: Job? = null
     private var portsJob: Job? = null
+    private var remoteJob: Job? = null
     private var diagnosticsJob: Job? = null
     private var settingsJob: Job? = null
     private var confirmJob: Job? = null
@@ -740,6 +765,123 @@ class ShellViewModel(
         }
     }
 
+    fun ensureRemote() {
+        if (_remote.value.loaded || remoteJob?.isActive == true) return
+        loadRemote()
+    }
+
+    fun loadRemote() {
+        if (remoteJob?.isActive == true) return
+        remoteJob = viewModelScope.launch {
+            _remote.update { it.copy(loading = true, error = null) }
+            var next = _remote.value.copy(loading = false, loaded = true, error = null)
+            var failure: String? = null
+            fun <T> merge(result: ApiResult<T>, apply: (T) -> Unit) {
+                when (result) {
+                    is ApiResult.Ok -> apply(result.value)
+                    else -> {
+                        if (result == ApiResult.Unauthorized) _sessionExpired.value = true
+                        if (failure == null) failure = describe(result)
+                    }
+                }
+            }
+            coroutineScope {
+                val ts = async { api.tailscale() }
+                val wg = async { api.wireGuard() }
+                val ovpn = async { api.openVpn() }
+                val ddns = async { api.ddns() }
+                val exposure = async { api.remoteAccess() }
+                // Cada transporte puede faltar en este router: un 502 aislado
+                // no debe tumbar la pantalla entera.
+                (ts.await() as? ApiResult.Ok)?.let { next = next.copy(tailscale = it.value) }
+                (wg.await() as? ApiResult.Ok)?.let { next = next.copy(wireguard = it.value) }
+                (ovpn.await() as? ApiResult.Ok)?.let { next = next.copy(openvpn = it.value) }
+                (ddns.await() as? ApiResult.Ok)?.let { next = next.copy(ddns = it.value) }
+                merge(exposure.await()) { next = next.copy(exposure = it) }
+            }
+            _remote.value = next.copy(error = failure)
+        }
+    }
+
+    /** POST /api/tailscale: arranca o para el nodo Tailscale del router. */
+    fun setTailscale(enabled: Boolean) {
+        if (_remote.value.busy) return
+        viewModelScope.launch {
+            _remote.update { it.copy(busy = true, actionMessage = null, actionError = null) }
+            when (val result = api.setTailscale(enabled)) {
+                is ApiResult.Ok -> finishRemoteWrite(
+                    status = result.value.status,
+                    rolledBack = result.value.rolledBack,
+                    error = result.value.error,
+                    reload = { (api.tailscale() as? ApiResult.Ok)?.value?.let { _remote.update { r -> r.copy(tailscale = it) } } },
+                    okMessage = if (enabled) "Tailscale conectado" else "Tailscale detenido",
+                )
+                else -> setRemoteFeedback(error = failWith(result))
+            }
+        }
+    }
+
+    /** POST /api/remoteaccess: abre o cierra un permiso de entrada desde la WAN. */
+    fun setRemoteAccess(req: RemoteAccessRequest) {
+        if (_remote.value.busy) return
+        viewModelScope.launch {
+            _remote.update { it.copy(busy = true, actionMessage = null, actionError = null) }
+            when (val result = api.setRemoteAccess(req)) {
+                is ApiResult.Ok -> finishRemoteWrite(
+                    status = result.value.status,
+                    rolledBack = result.value.rolledBack,
+                    error = result.value.error,
+                    reload = { (api.remoteAccess() as? ApiResult.Ok)?.value?.let { _remote.update { r -> r.copy(exposure = it) } } },
+                    okMessage = "Permiso actualizado y verificado",
+                )
+                else -> setRemoteFeedback(error = failWith(result))
+            }
+        }
+    }
+
+    /** POST /api/ddns/force: pide al router que actualice los nombres. */
+    fun forceDdns() {
+        if (_remote.value.busy) return
+        viewModelScope.launch {
+            _remote.update { it.copy(busy = true, actionMessage = null, actionError = null) }
+            when (val result = api.forceDdns()) {
+                is ApiResult.Ok -> finishRemoteWrite(
+                    status = result.value.status,
+                    rolledBack = result.value.rolledBack,
+                    error = result.value.error,
+                    reload = { (api.ddns() as? ApiResult.Ok)?.value?.let { _remote.update { r -> r.copy(ddns = it) } } },
+                    okMessage = "Actualización de DDNS pedida al router",
+                )
+                else -> setRemoteFeedback(error = failWith(result))
+            }
+        }
+    }
+
+    fun clearRemoteFeedback() {
+        _remote.update { it.copy(actionMessage = null, actionError = null) }
+    }
+
+    private suspend fun finishRemoteWrite(
+        status: String,
+        rolledBack: Boolean,
+        error: String?,
+        reload: suspend () -> Unit,
+        okMessage: String,
+    ) {
+        reload()
+        when {
+            rolledBack || status == "rolled_back" || status == "failed" -> setRemoteFeedback(
+                error = error?.takeIf { it.isNotBlank() } ?: "El router deshizo el cambio",
+            )
+            error != null && error.isNotBlank() -> setRemoteFeedback(error = error)
+            else -> setRemoteFeedback(message = okMessage)
+        }
+    }
+
+    private fun setRemoteFeedback(message: String? = null, error: String? = null) {
+        _remote.update { it.copy(busy = false, actionMessage = message, actionError = error) }
+    }
+
     fun ensurePorts() {
         if (_ports.value.loaded || portsJob?.isActive == true) return
         loadPorts()
@@ -1025,6 +1167,7 @@ class ShellViewModel(
             ShellTab.PANEL -> loadPanel()
             ShellTab.CLIENTS -> loadClients()
             ShellTab.WIFI -> loadWifi()
+            ShellTab.REMOTE -> loadRemote()
             ShellTab.PORTS -> loadPorts()
             ShellTab.DIAGNOSTICS -> loadDiagnostics()
             ShellTab.SETTINGS -> loadSettings()

@@ -18,11 +18,13 @@ La pestaña WiFi permite renombrar una red, cambiar su clave y seguridad, oculta
 
 La pestaña Ajustes permite reiniciar el router, esperando a que vuelva a responder, cambiar la contraseña de administración, lo que cierra todas las sesiones del panel y devuelve al login, instalar el firmware del router cuando owut lo considera seguro actualizar el panel NetGrip y programar esa actualización a diario o cada semana dentro de una franja de dos horas. Detalle en [docs/system-actions.md](docs/system-actions.md).
 
+Una pestaña de Acceso remoto muestra Tailscale, WireGuard, OpenVPN, DDNS y los permisos de entrada desde la WAN, recomienda Tailscale y avisa antes de publicar nada. Detalle en [docs/remote-access.md](docs/remote-access.md).
+
 La app guarda tantas redes y routers como haga falta. La cabecera tiene un selector de red y otro de dispositivo, cada uno con su hoja, y cada router conserva su propia sesión cifrada. Los dispositivos se añaden por URL con las credenciales en el momento, o se importan del fleet del router. Detalle en [docs/multi-network.md](docs/multi-network.md).
 
-Pasan 264 tests de host de Android y la compilación del APK de depuración. Las pruebas en emulador están hechas contra una API simulada. Falta la validación contra un router real.
+Pasan 269 tests de host de Android y la compilación del APK de depuración. Las pruebas en emulador están hechas contra una API simulada. Falta la validación contra un router real.
 
-El shell está descrito en [docs/readonly-shell.md](docs/readonly-shell.md), las escrituras en [docs/client-writes.md](docs/client-writes.md), las de WiFi en [docs/wifi-writes.md](docs/wifi-writes.md), las de sistema en [docs/system-actions.md](docs/system-actions.md) y las redes y dispositivos en [docs/multi-network.md](docs/multi-network.md).
+El shell está descrito en [docs/readonly-shell.md](docs/readonly-shell.md), las escrituras en [docs/client-writes.md](docs/client-writes.md), las de WiFi en [docs/wifi-writes.md](docs/wifi-writes.md), las de sistema en [docs/system-actions.md](docs/system-actions.md), el acceso remoto en [docs/remote-access.md](docs/remote-access.md) y las redes y dispositivos en [docs/multi-network.md](docs/multi-network.md).
 
 ## Navegación
 

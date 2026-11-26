@@ -104,6 +104,18 @@ BASE = {
     ], "total": 1},
     "/api/leds": {"applicable": False, "leds": []},
     "/api/fleet": {"nodes": []},
+    "/api/tailscale": {"installed": True, "running": False, "state": "NeedsLogin",
+                        "auth_url": "https://login.tailscale.com/a/mock", "ips": []},
+    "/api/wireguard": {"installed": True, "active": True, "running": True, "port": "51820",
+                       "address": "10.6.0.1/24", "public_key": "PUB", "peers": [
+                           {"section": "peer1", "name": "movil", "allowed_ips": ["10.6.0.2/32"]}],
+                       "endpoint": "casa.duckdns.org", "managed_by": ""},
+    "/api/openvpn": {"installed": False, "has_pki": False, "active": False, "running": False},
+    "/api/ddns": {"installed": True, "wan_ip": "203.0.113.9", "entries": [
+        {"section": "casa", "enabled": True, "running": True, "service_name": "duckdns",
+         "domain": "casa.duckdns.org", "registered_ip": "203.0.113.9", "last_update": "hace 5 min"}]},
+    "/api/remoteaccess": {"applicable": True, "ping_wan": True,
+                          "remote_https": False, "remote_ssh": False},
     "/api/clients/meta": {"meta": {}},
 }
 
@@ -171,6 +183,10 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 ESTADO["confirm"] = None
                 self._send(200, {"pending": False})
+            return
+        if path == "/api/tailscale" or path == "/api/wireguard" or path == "/api/openvpn" \
+                or path == "/api/ddns" or path == "/api/remoteaccess":
+            self._send(200, BASE[path])
             return
         if path == "/api/update":
             self._send(200, {
@@ -250,6 +266,26 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/selfupdate":
             ESTADO["selfupdate_started"] = True
             self._send(200, {"phase": "restarting", "progress": 100})
+            return
+        if path == "/api/tailscale":
+            base = dict(BASE["/api/tailscale"])
+            base["running"] = bool(body.get("enabled"))
+            base["state"] = "Running" if base["running"] else "Stopped"
+            base["auth_url"] = "" if base["running"] else base["auth_url"]
+            BASE["/api/tailscale"] = base
+            self._send(200, {"status": "applied", "rolled_back": False, "state": base})
+            return
+        if path == "/api/remoteaccess":
+            base = dict(BASE["/api/remoteaccess"])
+            for key in ("ping_wan", "remote_https", "remote_ssh"):
+                if key in body:
+                    base[key] = bool(body[key])
+            BASE["/api/remoteaccess"] = base
+            self._send(200, {"status": "applied", "rolled_back": False, "state": base})
+            return
+        if path == "/api/ddns/force":
+            self._send(200, {"status": "applied", "rolled_back": False,
+                             "state": BASE["/api/ddns"]})
             return
         if path == "/api/reboot":
             self._send(200, {"started": True})
