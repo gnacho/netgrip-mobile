@@ -36,6 +36,12 @@ message in the card and the peer stays in the discovered list.
 - The password is the admin password of that router. It is typed in the dialog,
   sent once and never stored by the app.
 - The name is prefilled from the beacon and can be changed before adopting.
+- **The adopted router also joins the app's networks**: the dialog lets the user
+  pick which network gets it (the current one by default) and, once the panel
+  confirms the adoption, `addAdoptedDevice` stores it as a device there. That
+  keeps the multi-network model coherent: a router adopted from the panel is a
+  router you can connect to from the app. The current device is not switched, so
+  adopting never throws the user out of the session they are in.
 
 ## What the app does not do
 
@@ -82,3 +88,6 @@ and the reload, the rejection from the panel, the discovery switch and the 401.
 carry their reason, a 200 followed by the same version ends as `Sin confirmar`,
 a rejected order is `Error` without polling, cancelling leaves the current one
 unconfirmed and the rest unexecuted, and a failed `check-all` starts nothing.
+`SessionSitesTest` covers the bridge: the adopted router lands in the chosen
+network, the current network and device are left untouched, it is persisted and
+an address that already exists is not duplicated.

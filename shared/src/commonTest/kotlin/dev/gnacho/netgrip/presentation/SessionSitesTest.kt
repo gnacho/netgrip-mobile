@@ -507,4 +507,65 @@ class SessionSitesTest {
         assertEquals("http://192.168.1.9:8080", viewModel.sites.network("net-ofi")?.devices?.single()?.url)
         assertEquals(1, viewModel.sites.network("net-casa")?.devices?.size)
     }
+
+    @Test
+    fun elRouterAdoptadoEntraEnSuRedSinSacarLaSesionActual() = runSitesTest {
+        val storage = MapStorage()
+        val casaUrl = "http://192.168.1.3:8080"
+        val casa = SavedDevice(id = SiteRules.deviceId(casaUrl), url = casaUrl)
+        seed(
+            storage,
+            SavedSites(
+                networks = listOf(
+                    SavedNetwork("net-casa", "Casa", listOf(casa)),
+                    SavedNetwork("net-ofi", "Oficina"),
+                ),
+                currentNetworkId = "net-casa",
+                currentDeviceId = casa.id,
+            ),
+        )
+        val viewModel = SessionViewModel(
+            storage = storage,
+            endpointProbe = PassThroughProbe(),
+            apiFactory = Factory(RouterServer().engine(this)),
+        )
+
+        viewModel.addAdoptedDevice("192.168.1.77:8080", "Salón", "net-ofi")
+        advanceUntilIdle()
+
+        val ofi = assertNotNull(viewModel.sites.network("net-ofi"))
+        assertEquals(listOf("Salón"), ofi.devices.map { it.name })
+        assertEquals("http://192.168.1.77:8080", ofi.devices.single().url)
+        // Adoptar no mueve al usuario de red ni de dispositivo.
+        assertEquals("net-casa", viewModel.sites.currentNetworkId)
+        assertEquals(casa.id, viewModel.sites.currentDeviceId)
+        // Y queda guardado para el próximo arranque.
+        assertTrue(storage.data.values.any { it.contains("Salón") })
+    }
+
+    @Test
+    fun adoptarUnRouterQueYaEstaEnLasRedesNoLoDuplica() = runSitesTest {
+        val storage = MapStorage()
+        val casaUrl = "http://192.168.1.3:8080"
+        val casa = SavedDevice(id = SiteRules.deviceId(casaUrl), url = casaUrl)
+        seed(
+            storage,
+            SavedSites(
+                networks = listOf(SavedNetwork("net-casa", "Casa", listOf(casa))),
+                currentNetworkId = "net-casa",
+                currentDeviceId = casa.id,
+            ),
+        )
+        val viewModel = SessionViewModel(
+            storage = storage,
+            endpointProbe = PassThroughProbe(),
+            apiFactory = Factory(RouterServer().engine(this)),
+        )
+
+        viewModel.addAdoptedDevice("http://192.168.1.3:8080", "Casa otra vez", null)
+        advanceUntilIdle()
+
+        assertEquals(1, viewModel.sites.currentNetwork?.devices?.size)
+        assertEquals("Ese router ya está en tus redes", viewModel.siteMessage)
+    }
 }

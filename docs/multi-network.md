@@ -20,6 +20,7 @@ On the first run after upgrading, `SiteStore.load()` reads the previous single `
 
 - **Networks list** (home): every saved network with its device count and the current one marked. Create, rename and delete from here.
 - **Devices list**: the routers of the selected network with their URL, role and connection state. Tap to connect, add a device by URL, import the fleet or remove a device.
+- **Adopting from the Fleet tab**: a peer adopted in Flota is added to the network chosen in its dialog (the current one by default). It does not switch the current device, so the session stays where it was.
 - **Device configuration**: the tabs of the selected device. System back returns to the device list, and again to the networks list.
 - **Header**: two chips, the current network and the current device. Tapping one opens its sheet, as a shortcut to the same lists.
 - **Networks sheet**: lists every network with its device count, marks the current one, and allows renaming, deleting and creating. Selecting an empty network closes the session and shows the login screen, because there is nothing to connect to.

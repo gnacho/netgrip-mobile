@@ -127,6 +127,21 @@ class FleetViewModelTest {
     }
 
     @Test
+    fun aSuccessfulAdoptionHandsTheRequestToTheCaller() = runFleetTest { _, viewModel ->
+        viewModel.loadFleet()
+        advanceUntilIdle()
+        var adopted: dev.gnacho.netgrip.data.dto.FleetAdoptRequest? = null
+        viewModel.adoptFleetPeer(
+            DiscoveredPeerDto(id = "nuevo", name = "Salon", address = "192.168.1.77", port = 8080),
+            "Salon",
+            "clave",
+        ) { adopted = it }
+        advanceUntilIdle()
+        assertEquals("nuevo", adopted?.id)
+        assertEquals("192.168.1.77:8080", adopted?.address)
+    }
+
+    @Test
     fun discoverySwitchPostsAndKeepsTheServerAnswer() = runFleetTest { engine, viewModel ->
         viewModel.loadFleet()
         advanceUntilIdle()
