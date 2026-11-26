@@ -25,7 +25,12 @@ import dev.gnacho.netgrip.data.dto.ModeDto
 import dev.gnacho.netgrip.data.dto.SelfUpdateDto
 import dev.gnacho.netgrip.data.dto.LedDto
 import dev.gnacho.netgrip.data.dto.LogEntryDto
+import dev.gnacho.netgrip.data.dto.NtfyDto
+import dev.gnacho.netgrip.data.dto.NtfySetRequest
+import dev.gnacho.netgrip.data.dto.SelfTestDto
 import dev.gnacho.netgrip.data.dto.SystemDto
+import dev.gnacho.netgrip.data.dto.TelegramDto
+import dev.gnacho.netgrip.data.dto.TelegramSetRequest
 import dev.gnacho.netgrip.data.dto.TailscaleDto
 import dev.gnacho.netgrip.data.dto.WireGuardDto
 import dev.gnacho.netgrip.data.dto.SelfUpdateScheduleDto
@@ -150,6 +155,12 @@ data class DiagnosticsState(
     val filter: String = "",
     val ledsApplicable: Boolean = false,
     val leds: List<LedDto> = emptyList(),
+    /** Comprobacion del router y pruebas puntuales. */
+    val selfTest: SelfTestDto? = null,
+    val selfTestBusy: Boolean = false,
+    val toolRunning: String? = null,
+    val toolResult: List<String> = emptyList(),
+    val toolError: String? = null,
 )
 
 /** Estado de la pestana Ajustes. */
@@ -169,6 +180,10 @@ data class SettingsState(
     /** Programacion de la autoactualizacion del panel. */
     val selfUpdateSchedule: SelfUpdateScheduleDto? = null,
     val scheduleSaving: Boolean = false,
+    /** Avisos por Telegram y ntfy. */
+    val telegram: TelegramDto? = null,
+    val ntfy: NtfyDto? = null,
+    val notifyBusy: Boolean = false,
     /** Acciones de sistema en curso (reinicio, contrasena). */
     val actionBusy: Boolean = false,
     val actionMessage: String? = null,
@@ -728,6 +743,54 @@ class ShellViewModel(
         }
     }
 
+    /** GET /api/diagnostics/selftest. */
+    fun loadSelfTest() {
+        if (_diagnostics.value.selfTestBusy) return
+        viewModelScope.launch {
+            _diagnostics.update { it.copy(selfTestBusy = true) }
+            when (val result = api.selfTest()) {
+                is ApiResult.Ok -> _diagnostics.update {
+                    it.copy(selfTestBusy = false, selfTest = result.value)
+                }
+                else -> _diagnostics.update {
+                    it.copy(selfTestBusy = false, toolError = failWith(result))
+                }
+            }
+        }
+    }
+
+    /**
+     * POST /api/diagnostics. El resultado se guarda como texto: la app no
+     * interpreta ni resume lo que midió el router.
+     */
+    fun runDiagnostic(
+        test: String,
+        host: String = "",
+        count: Int = 0,
+        query: String = "",
+        resolver: String = "",
+        port: Int = 0,
+    ) {
+        if (_diagnostics.value.toolRunning != null) return
+        viewModelScope.launch {
+            _diagnostics.update {
+                it.copy(toolRunning = test, toolResult = emptyList(), toolError = null)
+            }
+            when (val result = api.runDiagnostics(test, host, count, query, resolver, port)) {
+                is ApiResult.Ok -> _diagnostics.update {
+                    it.copy(toolRunning = null, toolResult = result.value.lines())
+                }
+                else -> _diagnostics.update {
+                    it.copy(toolRunning = null, toolError = failWith(result))
+                }
+            }
+        }
+    }
+
+    fun clearToolResult() {
+        _diagnostics.update { it.copy(toolResult = emptyList(), toolError = null) }
+    }
+
     fun ensureDiagnostics() {
         if (_diagnostics.value.loaded || diagnosticsJob?.isActive == true) return
         loadDiagnostics()
@@ -928,6 +991,8 @@ class ShellViewModel(
                 val update = async { api.selfUpdate() }
                 val firmware = async { api.updateCheck() }
                 val schedule = async { api.selfUpdateSchedule() }
+                val telegram = async { api.telegram() }
+                val ntfy = async { api.ntfy() }
                 merge(board.await()) { next = next.copy(board = it) }
                 merge(mode.await()) { next = next.copy(mode = it) }
                 merge(access.await()) { next = next.copy(access = it) }
@@ -940,6 +1005,12 @@ class ShellViewModel(
                 }
                 (schedule.await() as? ApiResult.Ok)?.let { result ->
                     next = next.copy(selfUpdateSchedule = result.value)
+                }
+                (telegram.await() as? ApiResult.Ok)?.let { result ->
+                    next = next.copy(telegram = result.value)
+                }
+                (ntfy.await() as? ApiResult.Ok)?.let { result ->
+                    next = next.copy(ntfy = result.value)
                 }
             }
             _settings.value = next.copy(error = failure)
@@ -1134,6 +1205,93 @@ class ShellViewModel(
                 else -> _settings.update {
                     it.copy(scheduleSaving = false, actionError = failWith(result))
                 }
+            }
+        }
+    }
+
+    /**
+     * POST /api/telegram. Un token vacio conserva el guardado, asi que el
+     * campo se puede dejar en blanco al cambiar solo el chat.
+     */
+    fun saveTelegram(botToken: String, chatId: String, enabled: Boolean) {
+        if (_settings.value.notifyBusy) return
+        viewModelScope.launch {
+            _settings.update { it.copy(notifyBusy = true, actionMessage = null, actionError = null) }
+            when (val result = api.setTelegram(TelegramSetRequest(botToken, chatId, enabled))) {
+                is ApiResult.Ok -> {
+                    val name = result.value.botName
+                    val chat = result.value.chatName
+                    val read = api.telegram()
+                    _settings.update { current ->
+                        current.copy(
+                            notifyBusy = false,
+                            telegram = (read as? ApiResult.Ok)?.value ?: current.telegram,
+                            actionMessage = buildString {
+                                append("Telegram guardado")
+                                if (name.isNotBlank()) append(": $name")
+                                if (chat.isNotBlank()) append(" en $chat")
+                            },
+                        )
+                    }
+                }
+                else -> _settings.update {
+                    it.copy(notifyBusy = false, actionError = failWith(result))
+                }
+            }
+        }
+    }
+
+    /** POST /api/telegram/test: el resultado es del router, no de la app. */
+    fun testTelegram() {
+        if (_settings.value.notifyBusy) return
+        viewModelScope.launch {
+            _settings.update { it.copy(notifyBusy = true, actionMessage = null, actionError = null) }
+            when (val result = api.testTelegram()) {
+                is ApiResult.Ok -> _settings.update {
+                    it.copy(
+                        notifyBusy = false,
+                        actionMessage = if (result.value.ok) "Mensaje de prueba enviado" else "El router no confirmó el envío",
+                    )
+                }
+                else -> _settings.update { it.copy(notifyBusy = false, actionError = failWith(result)) }
+            }
+        }
+    }
+
+    /** POST /api/ntfy. */
+    fun saveNtfy(server: String, topic: String, token: String, enabled: Boolean) {
+        if (_settings.value.notifyBusy) return
+        viewModelScope.launch {
+            _settings.update { it.copy(notifyBusy = true, actionMessage = null, actionError = null) }
+            when (val result = api.setNtfy(NtfySetRequest(server, topic, token, enabled))) {
+                is ApiResult.Ok -> {
+                    val read = api.ntfy()
+                    _settings.update { current ->
+                        current.copy(
+                            notifyBusy = false,
+                            ntfy = (read as? ApiResult.Ok)?.value ?: current.ntfy,
+                            actionMessage = "ntfy guardado",
+                        )
+                    }
+                }
+                else -> _settings.update { it.copy(notifyBusy = false, actionError = failWith(result)) }
+            }
+        }
+    }
+
+    /** POST /api/ntfy/test. */
+    fun testNtfy() {
+        if (_settings.value.notifyBusy) return
+        viewModelScope.launch {
+            _settings.update { it.copy(notifyBusy = true, actionMessage = null, actionError = null) }
+            when (val result = api.testNtfy()) {
+                is ApiResult.Ok -> _settings.update {
+                    it.copy(
+                        notifyBusy = false,
+                        actionMessage = if (result.value.ok) "Mensaje de prueba enviado a ntfy" else "El router no confirmó el envío",
+                    )
+                }
+                else -> _settings.update { it.copy(notifyBusy = false, actionError = failWith(result)) }
             }
         }
     }

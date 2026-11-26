@@ -46,7 +46,9 @@ import dev.gnacho.netgrip.data.dto.BoardDto
 import dev.gnacho.netgrip.data.dto.MdnsDto
 import dev.gnacho.netgrip.data.dto.ModeDto
 import dev.gnacho.netgrip.data.dto.SelfUpdateDto
+import dev.gnacho.netgrip.data.dto.NtfyDto
 import dev.gnacho.netgrip.data.dto.SelfUpdateScheduleDto
+import dev.gnacho.netgrip.data.dto.TelegramDto
 import dev.gnacho.netgrip.domain.format.Formats
 import dev.gnacho.netgrip.data.dto.UpdateCheckDto
 import dev.gnacho.netgrip.presentation.SettingsState
@@ -124,6 +126,15 @@ fun SettingsScreen(
                 }
             }
             item { FirmwareCard(state.firmware, state.actionBusy) { viewModel.installFirmware() } }
+            item {
+                NotificationsCard(
+                    state = state,
+                    onSaveTelegram = viewModel::saveTelegram,
+                    onTestTelegram = viewModel::testTelegram,
+                    onSaveNtfy = viewModel::saveNtfy,
+                    onTestNtfy = viewModel::testNtfy,
+                )
+            }
             item {
                 UpdateCard(
                     update = state.selfUpdate,
@@ -789,6 +800,275 @@ private fun PasswordDialog(
                 } else {
                     Text("Cambiar")
                 }
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
+    )
+}
+
+/**
+ * Avisos por Telegram y ntfy. Los dos validan contra el servicio desde el
+ * router: la app solo manda la configuracion y muestra lo que responde.
+ */
+@Composable
+private fun NotificationsCard(
+    state: SettingsState,
+    onSaveTelegram: (String, String, Boolean) -> Unit,
+    onTestTelegram: () -> Unit,
+    onSaveNtfy: (String, String, String, Boolean) -> Unit,
+    onTestNtfy: () -> Unit,
+) {
+    var telegramOpen by remember { mutableStateOf(false) }
+    var ntfyOpen by remember { mutableStateOf(false) }
+
+    NetGripCard(
+        eyebrow = "Avisos",
+        title = "Notificaciones",
+        subtitle = "Telegram y ntfy",
+        icon = NetGripIcons.Bell,
+        iconTone = Tone.VIOLET,
+    ) {
+        val telegram = state.telegram
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text("Telegram", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    when {
+                        telegram == null -> "Sin datos"
+                        !telegram.enabled -> "Desactivado"
+                        telegram.chatId.isBlank() -> "Sin chat configurado"
+                        else -> "Chat ${telegram.chatId}"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Pill(
+                if (telegram?.enabled == true) "Activo" else "Apagado",
+                if (telegram?.enabled == true) Tone.SUCCESS else Tone.NEUTRAL,
+            )
+        }
+        Spacer(Modifier.size(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick = { telegramOpen = true },
+                enabled = !state.notifyBusy,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.weight(1f),
+            ) { Text("Configurar") }
+            OutlinedButton(
+                onClick = onTestTelegram,
+                enabled = !state.notifyBusy && telegram?.enabled == true,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.weight(1f),
+            ) { Text("Enviar prueba") }
+        }
+
+        Spacer(Modifier.size(10.dp))
+        CardDivider()
+        Spacer(Modifier.size(10.dp))
+
+        val ntfy = state.ntfy
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text("ntfy", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    when {
+                        ntfy == null -> "Sin datos"
+                        ntfy.topic.isBlank() -> "Sin topic configurado"
+                        else -> "${ntfy.server.ifBlank { "ntfy.sh" }} · ${ntfy.topic}"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Pill(
+                if (ntfy?.enabled == true) "Activo" else "Apagado",
+                if (ntfy?.enabled == true) Tone.SUCCESS else Tone.NEUTRAL,
+            )
+        }
+        Spacer(Modifier.size(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick = { ntfyOpen = true },
+                enabled = !state.notifyBusy,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.weight(1f),
+            ) { Text("Configurar") }
+            OutlinedButton(
+                onClick = onTestNtfy,
+                enabled = !state.notifyBusy && ntfy?.enabled == true,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.weight(1f),
+            ) { Text("Enviar prueba") }
+        }
+        Spacer(Modifier.size(10.dp))
+        Text(
+            "Los mensajes los envía el router. Aquí solo se guarda a dónde.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+
+    if (telegramOpen) {
+        TelegramDialog(
+            current = state.telegram,
+            busy = state.notifyBusy,
+            onDismiss = { telegramOpen = false },
+            onApply = { token, chat, enabled ->
+                telegramOpen = false
+                onSaveTelegram(token, chat, enabled)
+            },
+        )
+    }
+
+    if (ntfyOpen) {
+        NtfyDialog(
+            current = state.ntfy,
+            busy = state.notifyBusy,
+            onDismiss = { ntfyOpen = false },
+            onApply = { server, topic, token, enabled ->
+                ntfyOpen = false
+                onSaveNtfy(server, topic, token, enabled)
+            },
+        )
+    }
+}
+
+@Composable
+private fun TelegramDialog(
+    current: TelegramDto?,
+    busy: Boolean,
+    onDismiss: () -> Unit,
+    onApply: (String, String, Boolean) -> Unit,
+) {
+    var token by remember { mutableStateOf("") }
+    var chat by remember { mutableStateOf(current?.chatId.orEmpty()) }
+    var enabled by remember { mutableStateOf(current?.enabled ?: true) }
+    val hasToken = current?.botToken?.isNotBlank() == true
+    val canSave = !busy && chat.isNotBlank() && (hasToken || token.isNotBlank())
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { IconTile(NetGripIcons.Bell, Tone.VIOLET) },
+        title = { Text("Telegram") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "El router valida el bot y el chat contra Telegram antes de guardarlos. " +
+                        "El token se queda en el router y no se puede leer desde aquí.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                OutlinedTextField(
+                    value = token,
+                    onValueChange = { token = it },
+                    label = { Text("Token del bot") },
+                    placeholder = {
+                        Text(if (hasToken) current?.botToken.orEmpty() else "123456:ABC...")
+                    },
+                    singleLine = true,
+                    supportingText = {
+                        Text(
+                            if (hasToken) {
+                                "Vacío conserva el token guardado."
+                            } else {
+                                "Lo da BotFather al crear el bot."
+                            },
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = chat,
+                    onValueChange = { chat = it },
+                    label = { Text("Chat ID") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                ToggleRow(
+                    title = "Enviar avisos",
+                    subtitle = "Apagado se guarda la configuración pero no se envía nada.",
+                    checked = enabled,
+                    enabled = !busy,
+                    onChange = { enabled = it },
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onApply(token, chat.trim(), enabled) }, enabled = canSave) {
+                Text("Guardar")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
+    )
+}
+
+@Composable
+private fun NtfyDialog(
+    current: NtfyDto?,
+    busy: Boolean,
+    onDismiss: () -> Unit,
+    onApply: (String, String, String, Boolean) -> Unit,
+) {
+    var server by remember { mutableStateOf(current?.server.orEmpty()) }
+    var topic by remember { mutableStateOf(current?.topic.orEmpty()) }
+    var token by remember { mutableStateOf("") }
+    var enabled by remember { mutableStateOf(current?.enabled ?: true) }
+    val canSave = !busy && topic.isNotBlank()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { IconTile(NetGripIcons.Bell, Tone.TEAL) },
+        title = { Text("ntfy") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "ntfy entrega el aviso en el topic. Si el servidor es privado, añade su token.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                OutlinedTextField(
+                    value = server,
+                    onValueChange = { server = it },
+                    label = { Text("Servidor") },
+                    placeholder = { Text("https://ntfy.sh") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = topic,
+                    onValueChange = { topic = it },
+                    label = { Text("Topic") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = token,
+                    onValueChange = { token = it },
+                    label = { Text("Token (opcional)") },
+                    singleLine = true,
+                    supportingText = {
+                        Text(
+                            if (current?.tokenSet == true) {
+                                "Ya hay un token guardado. Vacío lo conserva."
+                            } else {
+                                "Solo para servidores que lo pidan."
+                            },
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                ToggleRow(
+                    title = "Enviar avisos",
+                    subtitle = "Apagado se guarda la configuración pero no se envía nada.",
+                    checked = enabled,
+                    enabled = !busy,
+                    onChange = { enabled = it },
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onApply(server.trim(), topic.trim(), token.trim(), enabled) }, enabled = canSave) {
+                Text("Guardar")
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },

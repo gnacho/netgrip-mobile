@@ -104,6 +104,16 @@ BASE = {
     ], "total": 1},
     "/api/leds": {"applicable": False, "leds": []},
     "/api/fleet": {"nodes": []},
+    "/api/telegram": {"chatId": "12345", "enabled": True, "botToken": "123456...WXYZ"},
+    "/api/ntfy": {"server": "https://ntfy.sh", "topic": "casa", "tokenSet": True, "enabled": True},
+    "/api/diagnostics/selftest": {
+        "gateway": True, "wan": True, "dns": True, "ntp": False, "all_ok": False,
+        "checks": [
+            {"key": "gateway", "ok": True, "detail": "192.168.1.1 responde"},
+            {"key": "wan", "ok": True, "detail": "salida a Internet correcta"},
+            {"key": "dns", "ok": True, "detail": "resuelve example.org"},
+            {"key": "ntp", "ok": False, "detail": "sin respuesta del servidor de hora"}],
+        "tools": {"ping": True, "traceroute": False, "nslookup": True, "dig": False}},
     "/api/tailscale": {"installed": True, "running": False, "state": "NeedsLogin",
                         "auth_url": "https://login.tailscale.com/a/mock", "ips": []},
     "/api/wireguard": {"installed": True, "active": True, "running": True, "port": "51820",
@@ -183,6 +193,9 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 ESTADO["confirm"] = None
                 self._send(200, {"pending": False})
+            return
+        if path in ("/api/telegram", "/api/ntfy", "/api/diagnostics/selftest"):
+            self._send(200, BASE[path])
             return
         if path == "/api/tailscale" or path == "/api/wireguard" or path == "/api/openvpn" \
                 or path == "/api/ddns" or path == "/api/remoteaccess":
@@ -266,6 +279,49 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/selfupdate":
             ESTADO["selfupdate_started"] = True
             self._send(200, {"phase": "restarting", "progress": 100})
+            return
+        if path == "/api/telegram":
+            base = dict(BASE["/api/telegram"])
+            base["chatId"] = body.get("chatId", base["chatId"])
+            base["enabled"] = bool(body.get("enabled", base["enabled"]))
+            if body.get("botToken"):
+                base["botToken"] = "123456...nuevo"
+            BASE["/api/telegram"] = base
+            self._send(200, {"ok": True, "botName": "bot-demo", "chatName": "Casa"})
+            return
+        if path == "/api/telegram/test":
+            self._send(200, {"ok": True})
+            return
+        if path == "/api/ntfy":
+            base = dict(BASE["/api/ntfy"])
+            for key in ("server", "topic"):
+                if body.get(key):
+                    base[key] = body[key]
+            base["enabled"] = bool(body.get("enabled", base["enabled"]))
+            if body.get("token"):
+                base["tokenSet"] = True
+            BASE["/api/ntfy"] = base
+            self._send(200, {"ok": True})
+            return
+        if path == "/api/ntfy/test":
+            self._send(200, {"ok": True})
+            return
+        if path == "/api/diagnostics":
+            test = body.get("test", "ping")
+            if test == "ping":
+                self._send(200, {
+                    "host": body.get("host", ""), "count": 4, "sent": 4, "received": 4,
+                    "loss_pct": 0, "min_ms": 10.1, "avg_ms": 11.2, "max_ms": 12.3,
+                    "samples": [{"seq": i, "time_ms": 10.0 + i} for i in range(1, 5)]})
+            elif test == "traceroute":
+                self._send(200, {"host": body.get("host", ""), "hops": [
+                    {"hop": 1, "host": "192.168.1.1", "rtts": [1.2], "parsed": True}]})
+            elif test == "dns":
+                self._send(200, {"query": body.get("query", ""), "parsed": True,
+                                 "answers": [{"name": body.get("query", ""), "type": "A",
+                                              "value": "93.184.216.34"}]})
+            else:
+                self._send(200, {"host": body.get("host", ""), "port": body.get("port", 0), "open": True})
             return
         if path == "/api/tailscale":
             base = dict(BASE["/api/tailscale"])

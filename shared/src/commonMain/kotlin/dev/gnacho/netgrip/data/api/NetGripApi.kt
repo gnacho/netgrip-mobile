@@ -29,9 +29,18 @@ import dev.gnacho.netgrip.data.dto.LogEntryDto
 import dev.gnacho.netgrip.data.dto.LoginRequest
 import dev.gnacho.netgrip.data.dto.LogsDto
 import dev.gnacho.netgrip.data.dto.MdnsDto
+import dev.gnacho.netgrip.data.dto.NtfyDto
+import dev.gnacho.netgrip.data.dto.NtfySetRequest
+import dev.gnacho.netgrip.data.dto.OkResponse
+import dev.gnacho.netgrip.data.dto.TelegramDto
+import dev.gnacho.netgrip.data.dto.TelegramSetRequest
+import dev.gnacho.netgrip.data.dto.TelegramSetResponse
 import dev.gnacho.netgrip.data.dto.PasswordChangeRequest
 import dev.gnacho.netgrip.data.dto.DdnsDto
 import dev.gnacho.netgrip.data.dto.DdnsForceRequest
+import dev.gnacho.netgrip.data.dto.DiagnosticsOutcome
+import dev.gnacho.netgrip.data.dto.DiagnosticsRunRequest
+import dev.gnacho.netgrip.data.dto.SelfTestDto
 import dev.gnacho.netgrip.data.dto.OpenVpnDto
 import dev.gnacho.netgrip.data.dto.RebootResponseDto
 import dev.gnacho.netgrip.data.dto.RemoteAccessDto
@@ -326,6 +335,62 @@ class NetGripApi(
     /** POST /api/iotwifi, con el mismo healthcheck que invitados. */
     suspend fun setIoTWifi(cfg: IoTConfigRequest): ApiResult<NetworkWriteResponse<IoTProbeDto>> =
         postJson("/api/iotwifi", cfg, longRunning = true) { json.decodeFromJsonElement(it) }
+
+    /** GET /api/diagnostics/selftest: comprobacion de gateway, WAN, DNS y NTP. */
+    suspend fun selfTest(): ApiResult<SelfTestDto> =
+        getData("/api/diagnostics/selftest") { json.decodeFromJsonElement(it) }
+
+    /**
+     * POST /api/diagnostics. Cada prueba tarda lo suyo (ping hasta 15 s,
+     * traceroute hasta 30 s): se pide con timeout largo.
+     */
+    suspend fun runDiagnostics(
+        test: String,
+        host: String = "",
+        count: Int = 0,
+        query: String = "",
+        resolver: String = "",
+        port: Int = 0,
+    ): ApiResult<DiagnosticsOutcome> = postJson(
+        "/api/diagnostics",
+        DiagnosticsRunRequest(test, host, count, query, resolver, port),
+        longRunning = true,
+    ) { element ->
+        when (test) {
+            "ping" -> DiagnosticsOutcome.Ping(json.decodeFromJsonElement(element))
+            "traceroute" -> DiagnosticsOutcome.Trace(json.decodeFromJsonElement(element))
+            "dns" -> DiagnosticsOutcome.Dns(json.decodeFromJsonElement(element))
+            else -> DiagnosticsOutcome.Tcp(json.decodeFromJsonElement(element))
+        }
+    }
+
+    /** GET /api/telegram: configuracion con el token enmascarado. */
+    suspend fun telegram(): ApiResult<TelegramDto> =
+        getData("/api/telegram") { json.decodeFromJsonElement(it) }
+
+    /** POST /api/telegram: el router valida el bot contra Telegram. */
+    suspend fun setTelegram(req: TelegramSetRequest): ApiResult<TelegramSetResponse> =
+        postJson("/api/telegram", req, longRunning = true) { json.decodeFromJsonElement(it) }
+
+    /** POST /api/telegram/test: envia un mensaje de prueba. */
+    suspend fun testTelegram(): ApiResult<OkResponse> =
+        postJson("/api/telegram/test", EmptyRequest(), longRunning = true) {
+            json.decodeFromJsonElement(it)
+        }
+
+    /** GET /api/ntfy. */
+    suspend fun ntfy(): ApiResult<NtfyDto> =
+        getData("/api/ntfy") { json.decodeFromJsonElement(it) }
+
+    /** POST /api/ntfy. */
+    suspend fun setNtfy(req: NtfySetRequest): ApiResult<OkResponse> =
+        postJson("/api/ntfy", req) { json.decodeFromJsonElement(it) }
+
+    /** POST /api/ntfy/test: publica un mensaje de prueba en el topic. */
+    suspend fun testNtfy(): ApiResult<OkResponse> =
+        postJson("/api/ntfy/test", EmptyRequest(), longRunning = true) {
+            json.decodeFromJsonElement(it)
+        }
 
     /** GET /api/tailscale: estado del nodo Tailscale del router. */
     suspend fun tailscale(): ApiResult<TailscaleDto> =
