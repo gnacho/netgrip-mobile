@@ -50,6 +50,12 @@ import dev.gnacho.netgrip.data.dto.DpiProbeDto
 import dev.gnacho.netgrip.data.dto.DpiTimelineDto
 import dev.gnacho.netgrip.data.dto.NlbwmonProbeDto
 import dev.gnacho.netgrip.data.dto.NlbwmonTopDto
+import dev.gnacho.netgrip.data.dto.NftQoSProbeDto
+import dev.gnacho.netgrip.data.dto.NftQoSSetRequest
+import dev.gnacho.netgrip.data.dto.ParentalProbeDto
+import dev.gnacho.netgrip.data.dto.ParentalRuleDto
+import dev.gnacho.netgrip.data.dto.QuotaDto
+import dev.gnacho.netgrip.data.dto.QuotaProbeDto
 import dev.gnacho.netgrip.data.dto.SelfTestDto
 import dev.gnacho.netgrip.data.dto.OpenVpnDto
 import dev.gnacho.netgrip.data.dto.RebootResponseDto
@@ -542,6 +548,42 @@ class NetGripApi(
     suspend fun dpiTimeline(): ApiResult<DpiTimelineDto> =
         getData("/api/dpi/timeline") { json.decodeFromJsonElement(it) }
 
+    /** GET /api/quotas: topes de datos por dispositivo y su consumo. */
+    suspend fun quotas(): ApiResult<QuotaProbeDto> =
+        getData("/api/quotas") { json.decodeFromJsonElement(it) }
+
+    /** POST /api/quotas: crea o reemplaza el tope de un dispositivo. */
+    suspend fun setQuota(quota: QuotaDto): ApiResult<QuotaProbeDto> =
+        postJson("/api/quotas", quota) { json.decodeFromJsonElement(it) }
+
+    /** DELETE /api/quotas: quita el tope de [mac]. */
+    suspend fun deleteQuota(mac: String): ApiResult<QuotaProbeDto> =
+        deleteData("/api/quotas?mac=${mac.encodeURLParameter()}") { json.decodeFromJsonElement(it) }
+
+    /** GET /api/nftqos: limite de bajada y subida por dispositivo. */
+    suspend fun nftQos(): ApiResult<NftQoSProbeDto> =
+        getData("/api/nftqos") { json.decodeFromJsonElement(it) }
+
+    /** POST /api/nftqos: fija el limite en Mb/s (0 y 0 lo borra). */
+    suspend fun setNftQosLimit(limit: NftQoSSetRequest): ApiResult<NftQoSProbeDto> =
+        postJson("/api/nftqos", limit) { json.decodeFromJsonElement(it) }
+
+    /** DELETE /api/nftqos: quita el limite de [mac]. */
+    suspend fun deleteNftQosLimit(mac: String): ApiResult<NftQoSProbeDto> =
+        deleteData("/api/nftqos?mac=${mac.encodeURLParameter()}") { json.decodeFromJsonElement(it) }
+
+    /** GET /api/parental: horarios de bloqueo por dispositivo. */
+    suspend fun parental(): ApiResult<ParentalProbeDto> =
+        getData("/api/parental") { json.decodeFromJsonElement(it) }
+
+    /** POST /api/parental: guarda un horario y aplica el bloqueo al momento. */
+    suspend fun setParentalRule(rule: ParentalRuleDto): ApiResult<ParentalProbeDto> =
+        postJson("/api/parental", rule) { json.decodeFromJsonElement(it) }
+
+    /** DELETE /api/parental: quita el horario y su bloqueo. */
+    suspend fun deleteParentalRule(mac: String): ApiResult<ParentalProbeDto> =
+        deleteData("/api/parental?mac=${mac.encodeURLParameter()}") { json.decodeFromJsonElement(it) }
+
 
     suspend fun logout(): ApiResult<Unit> = safeCall {
         try {
@@ -560,6 +602,21 @@ class NetGripApi(
                 HttpStatusCode.Unauthorized -> ApiResult.Unauthorized
                 HttpStatusCode.TooManyRequests -> ApiResult.RateLimited(retryAfter(response))
                 else -> ApiResult.HttpError(response.status.value)
+            }
+        }
+
+    /**
+     * DELETE con respuesta JSON: el panel devuelve el probe completo despues
+     * de borrar, asi que la app no tiene que adivinar el estado nuevo.
+     */
+    private suspend fun <T> deleteData(path: String, decode: (JsonElement) -> T): ApiResult<T> =
+        safeCall {
+            val response = client.delete("$baseUrl$path") { sessionHeader() }
+            when (response.status) {
+                HttpStatusCode.OK -> ApiResult.Ok(decode(response.body<JsonElement>()))
+                HttpStatusCode.Unauthorized -> ApiResult.Unauthorized
+                HttpStatusCode.TooManyRequests -> ApiResult.RateLimited(retryAfter(response))
+                else -> ApiResult.HttpError(response.status.value, errorMessage(response))
             }
         }
 

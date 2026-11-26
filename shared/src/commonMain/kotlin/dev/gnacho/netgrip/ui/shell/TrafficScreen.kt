@@ -20,11 +20,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import dev.gnacho.netgrip.data.dto.ClientDto
 import dev.gnacho.netgrip.data.dto.DpiAppDto
 import dev.gnacho.netgrip.data.dto.DpiProtocolDto
 import dev.gnacho.netgrip.domain.format.Formats
@@ -55,7 +59,12 @@ import dev.gnacho.netgrip.ui.theme.MonoStyle
 @Composable
 fun TrafficScreen(viewModel: ShellViewModel) {
     val state by viewModel.traffic.collectAsState()
-    LaunchedEffect(Unit) { viewModel.ensureTraffic() }
+    val policies by viewModel.policies.collectAsState()
+    var policyDevice by remember { mutableStateOf<ClientDto?>(null) }
+    LaunchedEffect(Unit) {
+        viewModel.ensureTraffic()
+        viewModel.ensurePolicies()
+    }
 
     when {
         state.loading && !state.loaded -> LoadingBox("Leyendo la contabilidad del router")
@@ -84,11 +93,29 @@ fun TrafficScreen(viewModel: ShellViewModel) {
                     )
                 }
                 item { ProtocolsCard(apps) }
+                item {
+                    PoliciesCard(state.clients, state.names, policies) { client ->
+                        viewModel.clearPolicyFeedback()
+                        policyDevice = client
+                    }
+                }
                 item { DpiCard(state, protocols, dpiApps) }
                 item { TimelineCard(points, state.timeline?.totals?.total ?: 0) }
                 state.error?.let { message -> item { Banner(message, Tone.WARN) } }
             }
         }
+    }
+
+    policyDevice?.let { device ->
+        PolicySheet(
+            device = device,
+            viewModel = viewModel,
+            state = policies,
+            onDismiss = {
+                policyDevice = null
+                viewModel.clearPolicyFeedback()
+            },
+        )
     }
 }
 

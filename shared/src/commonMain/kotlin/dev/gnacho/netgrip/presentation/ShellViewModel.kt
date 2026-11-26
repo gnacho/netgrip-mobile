@@ -19,6 +19,12 @@ import dev.gnacho.netgrip.data.dto.DpiProbeDto
 import dev.gnacho.netgrip.data.dto.DpiTimelineDto
 import dev.gnacho.netgrip.data.dto.NlbwUsageDto
 import dev.gnacho.netgrip.data.dto.NlbwmonProbeDto
+import dev.gnacho.netgrip.data.dto.NftQoSProbeDto
+import dev.gnacho.netgrip.data.dto.NftQoSSetRequest
+import dev.gnacho.netgrip.data.dto.ParentalProbeDto
+import dev.gnacho.netgrip.data.dto.ParentalRuleDto
+import dev.gnacho.netgrip.data.dto.QuotaDto
+import dev.gnacho.netgrip.data.dto.QuotaProbeDto
 import dev.gnacho.netgrip.data.dto.GuestConfigRequest
 import dev.gnacho.netgrip.data.dto.GuestProbeDto
 import dev.gnacho.netgrip.data.dto.HistoryEntryDto
@@ -187,6 +193,26 @@ data class TrafficState(
     val timeline: DpiTimelineDto? = null,
     /** Nombres de los clientes conocidos, por MAC, para resolver las filas. */
     val names: Map<String, String> = emptyMap(),
+    /** Clientes del router, para las politicas por dispositivo. */
+    val clients: List<ClientDto> = emptyList(),
+)
+
+/**
+ * Estado de las politicas por dispositivo: cuota de datos, limite de
+ * velocidad y horario de bloqueo. Las tres se escriben de una en una y se
+ * releen del router despues de guardar.
+ */
+data class PoliciesState(
+    val loading: Boolean = false,
+    val loaded: Boolean = false,
+    val error: String? = null,
+    val quotas: QuotaProbeDto? = null,
+    val qos: NftQoSProbeDto? = null,
+    val parental: ParentalProbeDto? = null,
+    /** MAC del dispositivo cuya politica se esta guardando. */
+    val busyMac: String? = null,
+    val actionMessage: String? = null,
+    val actionError: String? = null,
 )
 
 /** Estado de la pestana Diagnostico. */
@@ -278,6 +304,9 @@ class ShellViewModel(
     private val _traffic = MutableStateFlow(TrafficState())
     val traffic: StateFlow<TrafficState> = _traffic.asStateFlow()
 
+    private val _policies = MutableStateFlow(PoliciesState())
+    val policies: StateFlow<PoliciesState> = _policies.asStateFlow()
+
     private val _sessionExpired = MutableStateFlow(false)
     val sessionExpired: StateFlow<Boolean> = _sessionExpired.asStateFlow()
 
@@ -293,6 +322,7 @@ class ShellViewModel(
     private var snapshotsJob: Job? = null
     private var diagnosticsJob: Job? = null
     private var trafficJob: Job? = null
+    private var policiesJob: Job? = null
     private var settingsJob: Job? = null
     private var confirmJob: Job? = null
 
@@ -940,6 +970,9 @@ class ShellViewModel(
                 if (clientsResult == ApiResult.Unauthorized || metaResult == ApiResult.Unauthorized) {
                     _sessionExpired.value = true
                 }
+                if (clientsResult is ApiResult.Ok) {
+                    next = next.copy(clients = clientsResult.value.clients)
+                }
                 if (clientsResult is ApiResult.Ok && metaResult is ApiResult.Ok) {
                     val names = mutableMapOf<String, String>()
                     clientsResult.value.clients.forEach { client ->
@@ -951,6 +984,130 @@ class ShellViewModel(
             }
             _traffic.value = next.copy(error = failure)
         }
+    }
+
+    fun ensurePolicies() {
+        if (_policies.value.loaded || policiesJob?.isActive == true) return
+        loadPolicies()
+    }
+
+    /** GET /api/quotas, /api/nftqos y /api/parental, cada uno por su cuenta. */
+    fun loadPolicies() {
+        if (policiesJob?.isActive == true) return
+        policiesJob = viewModelScope.launch {
+            _policies.update { it.copy(loading = true, error = null) }
+            var next = _policies.value.copy(loading = false, loaded = true)
+            var failure: String? = null
+            coroutineScope {
+                val quotas = async { api.quotas() }
+                val qos = async { api.nftQos() }
+                val parental = async { api.parental() }
+                when (val result = quotas.await()) {
+                    is ApiResult.Ok -> next = next.copy(quotas = result.value)
+                    else -> {
+                        if (result == ApiResult.Unauthorized) _sessionExpired.value = true
+                        failure = failure ?: describe(result)
+                    }
+                }
+                when (val result = qos.await()) {
+                    is ApiResult.Ok -> next = next.copy(qos = result.value)
+                    else -> {
+                        if (result == ApiResult.Unauthorized) _sessionExpired.value = true
+                        failure = failure ?: describe(result)
+                    }
+                }
+                when (val result = parental.await()) {
+                    is ApiResult.Ok -> next = next.copy(parental = result.value)
+                    else -> {
+                        if (result == ApiResult.Unauthorized) _sessionExpired.value = true
+                        failure = failure ?: describe(result)
+                    }
+                }
+            }
+            _policies.value = next.copy(error = failure)
+        }
+    }
+
+    /**
+     * POST /api/quotas. El router guarda el tope y la app relee las tres
+     * politicas; no pinta el cambio por su cuenta.
+     */
+    fun saveQuota(device: ClientDto, quota: QuotaDto) {
+        val mac = device.mac.lowercase()
+        runPolicyWrite(mac, "Cuota guardada") {
+            api.setQuota(quota.copy(mac = mac, ip = quota.ip.ifBlank { device.ip.orEmpty() }))
+        }
+    }
+
+    fun removeQuota(mac: String) = runPolicyWrite(mac, "Cuota quitada") { api.deleteQuota(mac) }
+
+    fun saveQos(device: ClientDto, download: Int, upload: Int) {
+        val mac = device.mac.lowercase()
+        runPolicyWrite(mac, "Velocidad guardada") {
+            api.setNftQosLimit(
+                NftQoSSetRequest(
+                    mac = mac,
+                    ip = device.ip.orEmpty(),
+                    download = download,
+                    upload = upload,
+                ),
+            )
+        }
+    }
+
+    fun removeQos(mac: String) = runPolicyWrite(mac, "Velocidad liberada") { api.deleteNftQosLimit(mac) }
+
+    fun saveParental(rule: ParentalRuleDto) =
+        runPolicyWrite(rule.mac.lowercase(), "Horario guardado") { api.setParentalRule(rule) }
+
+    fun removeParental(mac: String) =
+        runPolicyWrite(mac, "Horario quitado") { api.deleteParentalRule(mac) }
+
+    fun clearPolicyFeedback() {
+        _policies.update { it.copy(actionMessage = null, actionError = null) }
+    }
+
+    private fun runPolicyWrite(mac: String, message: String, write: suspend () -> ApiResult<*>) {
+        if (_policies.value.busyMac != null) return
+        viewModelScope.launch {
+            _policies.update { it.copy(busyMac = mac, actionMessage = null, actionError = null) }
+            val result = write()
+            if (result !is ApiResult.Ok) {
+                _policies.update { it.copy(busyMac = null, actionError = failWith(result)) }
+                return@launch
+            }
+            finishPolicyWrite(message)
+        }
+    }
+
+    /** Relectura de las tres politicas despues de escribir. */
+    private suspend fun finishPolicyWrite(message: String) {
+        var next = _policies.value.copy(busyMac = null, actionMessage = message, actionError = null)
+        var readError: String? = null
+        coroutineScope {
+            val quotas = async { api.quotas() }
+            val qos = async { api.nftQos() }
+            val parental = async { api.parental() }
+            when (val result = quotas.await()) {
+                is ApiResult.Ok -> next = next.copy(quotas = result.value)
+                else -> readError = readError ?: describe(result)
+            }
+            when (val result = qos.await()) {
+                is ApiResult.Ok -> next = next.copy(qos = result.value)
+                else -> readError = readError ?: describe(result)
+            }
+            when (val result = parental.await()) {
+                is ApiResult.Ok -> next = next.copy(parental = result.value)
+                else -> readError = readError ?: describe(result)
+            }
+        }
+        if (readError != null) {
+            next = next.copy(
+                actionMessage = null,
+                actionError = "Se guardó, pero no se pudo releer: $readError",
+            )
+        }
+        _policies.value = next
     }
 
     fun ensureSnapshots() {
@@ -1571,7 +1728,10 @@ class ShellViewModel(
             ShellTab.REMOTE -> loadRemote()
             ShellTab.SNAPSHOTS -> loadSnapshots()
             ShellTab.PORTS -> loadPorts()
-            ShellTab.TRAFFIC -> loadTraffic()
+            ShellTab.TRAFFIC -> {
+                loadTraffic()
+                if (_policies.value.loaded) loadPolicies()
+            }
             ShellTab.DIAGNOSTICS -> loadDiagnostics()
             ShellTab.SETTINGS -> loadSettings()
         }
