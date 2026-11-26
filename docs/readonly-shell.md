@@ -23,7 +23,7 @@ unknown keys are ignored and optional router fields have defaults.
 | `GET /api/ethports` | `ports[]` with `name`, `wan`, `up`, `speed_mbps`, `devices[]` |
 | `GET /api/wifi` | `interfaces[]` with section, radio, band, ssid, encryption, `has_key`, hidden, disabled, clients |
 | `GET /api/wireless` | bare array of radios with `name`, `up`, `band`, `channel`, `htmode`, `txpower` |
-| `GET /api/access` | `panel`, `luci`, `ssh` port and exposure state |
+| `GET /api/access` | `panel`, `web`, `ssh` port and exposure state |
 | `GET /api/mdns` | `installed`, `enabled`, `running`, `domain` |
 | `GET /api/selfupdate` | `current`, `latest`, `available`, `notes`, `check_error?` |
 | `GET /api/history` | `entries[]` con `ts` (s), `rx` y `tx` acumulados del puente LAN, `load` y `clients`. Anillo de 288 muestras cada 5 min |
