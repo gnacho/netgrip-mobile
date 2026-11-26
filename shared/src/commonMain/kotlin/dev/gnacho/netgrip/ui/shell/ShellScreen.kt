@@ -74,6 +74,7 @@ private data class NavEntry(val tab: ShellTab, val icon: ImageVector, val group:
 private val Navigation = listOf(
     NavEntry(ShellTab.PANEL, NetGripIcons.Panel, "Resumen"),
     NavEntry(ShellTab.CLIENTS, NetGripIcons.Clients, "Tu red"),
+    NavEntry(ShellTab.TRAFFIC, NetGripIcons.ChartColumn, "Tu red"),
     NavEntry(ShellTab.WIFI, NetGripIcons.Wifi, "Tu red"),
     NavEntry(ShellTab.REMOTE, NetGripIcons.Globe, "Tu red"),
     NavEntry(ShellTab.SNAPSHOTS, NetGripIcons.Archive, "Sistema"),
@@ -184,6 +185,7 @@ fun ShellScreen(
                 when (tab) {
                     ShellTab.PANEL -> PanelScreen(viewModel)
                     ShellTab.CLIENTS -> ClientsScreen(viewModel)
+                    ShellTab.TRAFFIC -> TrafficScreen(viewModel)
                     ShellTab.WIFI -> WifiScreen(viewModel)
                     ShellTab.REMOTE -> RemoteAccessScreen(viewModel)
                     ShellTab.SNAPSHOTS -> SnapshotsScreen(viewModel)

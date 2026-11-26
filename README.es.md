@@ -26,9 +26,11 @@ Una pestaña de Acceso remoto muestra Tailscale, WireGuard, OpenVPN, DDNS y los 
 
 La app guarda tantas redes y routers como haga falta. La cabecera tiene un selector de red y otro de dispositivo, cada uno con su hoja, y cada router conserva su propia sesión cifrada. Los dispositivos se añaden por URL con las credenciales en el momento, o se importan del fleet del router. Detalle en [docs/multi-network.md](docs/multi-network.md).
 
-Pasan 280 tests de host de Android y la compilación del APK de depuración. Las pruebas en emulador están hechas contra una API simulada. Falta la validación contra un router real.
+Una pestaña de Tráfico muestra quién movió más bytes y con qué protocolos y aplicaciones, tomado de la contabilidad del router (`nlbwmon`) y de su DPI (`netifyd`). Los contadores se muestran como los midió el router, nunca convertidos en tasas. Detalle en [docs/traffic.md](docs/traffic.md).
 
-El shell está descrito en [docs/readonly-shell.md](docs/readonly-shell.md), las escrituras en [docs/client-writes.md](docs/client-writes.md), las de WiFi en [docs/wifi-writes.md](docs/wifi-writes.md), las de sistema en [docs/system-actions.md](docs/system-actions.md), el acceso remoto en [docs/remote-access.md](docs/remote-access.md) y las redes y dispositivos en [docs/multi-network.md](docs/multi-network.md).
+Pasan 303 tests de host de Android y la compilación del APK de depuración. Las pruebas en emulador están hechas contra una API simulada. Falta la validación contra un router real.
+
+El shell está descrito en [docs/readonly-shell.md](docs/readonly-shell.md), las escrituras en [docs/client-writes.md](docs/client-writes.md), las de WiFi en [docs/wifi-writes.md](docs/wifi-writes.md), las lecturas de tráfico en [docs/traffic.md](docs/traffic.md), las de sistema en [docs/system-actions.md](docs/system-actions.md), el acceso remoto en [docs/remote-access.md](docs/remote-access.md) y las redes y dispositivos en [docs/multi-network.md](docs/multi-network.md).
 
 ## Navegación
 

@@ -45,6 +45,11 @@ import dev.gnacho.netgrip.data.dto.RollbackResponse
 import dev.gnacho.netgrip.data.dto.SnapshotsDto
 import dev.gnacho.netgrip.data.dto.DiagnosticsOutcome
 import dev.gnacho.netgrip.data.dto.DiagnosticsRunRequest
+import dev.gnacho.netgrip.data.dto.DpiAppsDto
+import dev.gnacho.netgrip.data.dto.DpiProbeDto
+import dev.gnacho.netgrip.data.dto.DpiTimelineDto
+import dev.gnacho.netgrip.data.dto.NlbwmonProbeDto
+import dev.gnacho.netgrip.data.dto.NlbwmonTopDto
 import dev.gnacho.netgrip.data.dto.SelfTestDto
 import dev.gnacho.netgrip.data.dto.OpenVpnDto
 import dev.gnacho.netgrip.data.dto.RebootResponseDto
@@ -513,6 +518,29 @@ class NetGripApi(
     /** Historico de 24 h del puente LAN. Contadores acumulados, no tasas. */
     suspend fun history(): ApiResult<HistoryDto> =
         getData("/api/history") { json.decodeFromJsonElement(it) }
+
+    /** GET /api/nlbwmon: estado del contable por flujo del router. */
+    suspend fun nlbwmon(): ApiResult<NlbwmonProbeDto> =
+        getData("/api/nlbwmon") { json.decodeFromJsonElement(it) }
+
+    /**
+     * GET /api/nlbwmon/top: dispositivos y protocolos que mas movieron.
+     * Listas vacias cuando nlbwmon no esta instalado.
+     */
+    suspend fun nlbwmonTop(): ApiResult<NlbwmonTopDto> =
+        getData("/api/nlbwmon/top") { json.decodeFromJsonElement(it) }
+
+    /** GET /api/dpi: protocolos vistos por nDPI, solo lectura. */
+    suspend fun dpi(): ApiResult<DpiProbeDto> =
+        getData("/api/dpi") { json.decodeFromJsonElement(it) }
+
+    /** GET /api/dpi/apps: aplicaciones identificadas por netifyd. */
+    suspend fun dpiApps(): ApiResult<DpiAppsDto> =
+        getData("/api/dpi/apps") { json.decodeFromJsonElement(it) }
+
+    /** GET /api/dpi/timeline: cubos de 5 minutos de las ultimas 24 h. */
+    suspend fun dpiTimeline(): ApiResult<DpiTimelineDto> =
+        getData("/api/dpi/timeline") { json.decodeFromJsonElement(it) }
 
 
     suspend fun logout(): ApiResult<Unit> = safeCall {
