@@ -28,9 +28,9 @@ The app can also hold as many networks and routers as needed. The header has a n
 
 A Traffic tab shows who moved the most bytes and which protocols and applications did it, taken from the router accounting (`nlbwmon`) and its DPI (`netifyd`). Counters are shown as the router measured them, never turned into rates. Each device can also carry a data quota, a bandwidth limit and a parental schedule, every change confirmed and re-read. See [docs/traffic.md](docs/traffic.md).
 
-A Fleet tab lists the routers the panel manages together, checks one or all of them for version and reachability, shows which peers are announcing themselves on the LAN and adopts them with their password, which the panel verifies before storing anything. See [docs/fleet.md](docs/fleet.md).
+A Fleet tab lists the routers the panel manages together, checks one or all of them for version and reachability, shows which peers are announcing themselves on the LAN and adopts them with their password, which the panel verifies before storing anything. It also updates the ones with a new version in a batch, one after another, reporting per device what was updated, what could not be confirmed, what failed and what was skipped and why, and it can be stopped at the next poll. See [docs/fleet.md](docs/fleet.md).
 
-333 Android host tests and the debug APK build pass. Emulator tests are done against a mock API. Validation against a real router is still pending.
+339 Android host tests and the debug APK build pass. Emulator tests are done against a mock API. Validation against a real router is still pending.
 
 The shell is described in [docs/readonly-shell.md](docs/readonly-shell.md), the client writes in [docs/client-writes.md](docs/client-writes.md), the WiFi writes in [docs/wifi-writes.md](docs/wifi-writes.md), the traffic readings in [docs/traffic.md](docs/traffic.md), the system actions in [docs/system-actions.md](docs/system-actions.md), remote access in [docs/remote-access.md](docs/remote-access.md) and the network and device handling in [docs/multi-network.md](docs/multi-network.md).
 

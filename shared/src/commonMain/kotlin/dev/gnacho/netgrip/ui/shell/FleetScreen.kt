@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -42,6 +43,7 @@ import dev.gnacho.netgrip.data.dto.DiscoveredPeerDto
 import dev.gnacho.netgrip.data.dto.FleetNodeDto
 import dev.gnacho.netgrip.domain.fleet.FleetRules
 import dev.gnacho.netgrip.presentation.FleetState
+import dev.gnacho.netgrip.presentation.FleetTaskStatus
 import dev.gnacho.netgrip.presentation.ShellViewModel
 import dev.gnacho.netgrip.ui.common.Banner
 import dev.gnacho.netgrip.ui.common.EmptyStateView
@@ -78,6 +80,11 @@ fun FleetScreen(viewModel: ShellViewModel) {
             ) {
                 item {
                     SummaryCard(state, summary, viewModel)
+                }
+                if (state.batch.tasks.isNotEmpty()) {
+                    item {
+                        BatchCard(state, viewModel)
+                    }
                 }
                 if (state.nodes.isEmpty()) {
                     item {
@@ -122,6 +129,8 @@ private fun SummaryCard(
     summary: dev.gnacho.netgrip.domain.fleet.FleetSummary,
     viewModel: ShellViewModel,
 ) {
+    var confirmUpdate by remember { mutableStateOf(false) }
+    val candidates = FleetRules.updateCandidates(state.nodes)
     NetGripCard(
         eyebrow = "Flota",
         title = "Routers gestionados juntos",
@@ -141,11 +150,11 @@ private fun SummaryCard(
     ) {
         OutlinedButton(
             onClick = viewModel::checkAllFleet,
-            enabled = !state.checkingAll && state.checkingId == null && state.nodes.isNotEmpty(),
+            enabled = !state.checkingAll && state.checkingId == null && !state.batch.running,
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
         ) {
-            if (state.checkingAll) {
+            if (state.checkingAll && !state.batch.running) {
                 CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                 Spacer(Modifier.width(8.dp))
                 Text("Comprobando la flota")
@@ -155,7 +164,138 @@ private fun SummaryCard(
                 Text("Comprobar toda la flota")
             }
         }
+        Spacer(Modifier.height(8.dp))
+        if (state.batch.running) {
+            OutlinedButton(
+                onClick = viewModel::cancelFleetUpdate,
+                enabled = !state.batch.cancelled,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Icon(NetGripIcons.Close, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(if (state.batch.cancelled) "Deteniendo" else "Detener el lote")
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Se actualizan de uno en uno. Detener para antes de la siguiente comprobación; " +
+                    "lo ya lanzado no se revierte.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            Button(
+                onClick = { confirmUpdate = true },
+                enabled = candidates.isNotEmpty() && !state.checkingAll && state.checkingId == null,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Text(
+                    when {
+                        candidates.isEmpty() -> "Todo al día"
+                        candidates.size == 1 -> "Actualizar 1 router"
+                        else -> "Actualizar ${candidates.size} routers"
+                    },
+                )
+            }
+        }
     }
+    if (confirmUpdate) {
+        AlertDialog(
+            onDismissRequest = { confirmUpdate = false },
+            title = { Text("Actualizar la flota") },
+            text = {
+                Text(
+                    "Se actualizará el panel de ${candidates.size} router(s), uno detrás de otro. " +
+                        "Cada uno se reinicia: el panel no responde mientras se actualiza y no se " +
+                        "da por actualizado hasta que una comprobación vea la versión nueva. " +
+                        "Los que no respondan o ya estén al día se omiten con su motivo.",
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        confirmUpdate = false
+                        viewModel.startFleetUpdate()
+                    },
+                ) { Text("Actualizar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmUpdate = false }) { Text("Cancelar") }
+            },
+        )
+    }
+}
+
+@Composable
+private fun BatchCard(state: FleetState, viewModel: ShellViewModel) {
+    val tasks = state.batch.tasks
+    val done = tasks.count { it.status != FleetTaskStatus.PENDING && it.status != FleetTaskStatus.RUNNING }
+    NetGripCard(
+        eyebrow = "Lote",
+        title = "Resultado por router",
+        subtitle = if (state.batch.running) {
+            "$done de ${tasks.size} procesados"
+        } else {
+            "${tasks.size} routers"
+        },
+        icon = NetGripIcons.Zap,
+        iconTone = when {
+            state.batch.running -> Tone.ACCENT
+            tasks.any { it.status == FleetTaskStatus.FAILED } -> Tone.DANGER
+            tasks.any { it.status == FleetTaskStatus.UNCONFIRMED } -> Tone.WARN
+            else -> Tone.SUCCESS
+        },
+        trailing = if (state.batch.running) null else {
+            {
+                TextButton(onClick = viewModel::clearFleetBatch) { Text("Cerrar") }
+            }
+        },
+    ) {
+        tasks.forEach { task ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        task.name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    if (task.detail.isNotBlank()) {
+                        Text(
+                            task.detail,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                Pill(taskLabel(task.status), taskTone(task.status))
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+    }
+}
+
+private fun taskLabel(status: FleetTaskStatus): String = when (status) {
+    FleetTaskStatus.PENDING -> "En cola"
+    FleetTaskStatus.RUNNING -> "Actualizando"
+    FleetTaskStatus.UPDATED -> "Actualizado"
+    FleetTaskStatus.UNCONFIRMED -> "Sin confirmar"
+    FleetTaskStatus.FAILED -> "Error"
+    FleetTaskStatus.SKIPPED -> "Omitido"
+    FleetTaskStatus.CANCELLED -> "No ejecutado"
+}
+
+private fun taskTone(status: FleetTaskStatus): Tone = when (status) {
+    FleetTaskStatus.UPDATED -> Tone.SUCCESS
+    FleetTaskStatus.RUNNING, FleetTaskStatus.PENDING -> Tone.ACCENT
+    FleetTaskStatus.UNCONFIRMED, FleetTaskStatus.SKIPPED -> Tone.WARN
+    FleetTaskStatus.FAILED -> Tone.DANGER
+    FleetTaskStatus.CANCELLED -> Tone.NEUTRAL
 }
 
 @Composable
@@ -193,7 +333,7 @@ private fun NodeCard(node: FleetNodeDto, state: FleetState, viewModel: ShellView
             Spacer(Modifier.weight(1f))
             TextButton(
                 onClick = { viewModel.checkFleetNode(node.id) },
-                enabled = !state.checkingAll && state.checkingId == null,
+                enabled = !state.checkingAll && state.checkingId == null && !state.batch.running,
             ) {
                 if (state.checkingId == node.id) {
                     CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)

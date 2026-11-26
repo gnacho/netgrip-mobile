@@ -231,6 +231,14 @@ class Handler(BaseHTTPRequestHandler):
                 "reachable": False, "error": "connect: connection refused",
                 "current_version": "", "latest_version": "", "update_available": False,
             }
+        target = node.get("pending_version")
+        if target:
+            # Ya actualizado: el panel vuelve con la version nueva.
+            return {
+                "id": node["id"], "name": node["name"], "address": node["address"],
+                "reachable": True, "current_version": target,
+                "latest_version": target, "update_available": False,
+            }
         if node["id"] == "ofi":
             return {
                 "id": node["id"], "name": node["name"], "address": node["address"],
@@ -653,6 +661,18 @@ class Handler(BaseHTTPRequestHandler):
                 node.update(fresh)
                 checked.append(fresh)
             self._send(200, {"nodes": checked})
+            return
+        if path == "/api/fleet/update":
+            node_id = str(body.get("id", ""))
+            node = next((n for n in ESTADO["fleet"] if n["id"] == node_id), None)
+            if node is None:
+                self._send(400, {"error": "node not found"})
+                return
+            if node["id"] == "attic":
+                self._send(500, {"error": "update: dial tcp: i/o timeout"})
+                return
+            node["pending_version"] = node.get("latest_version") or "0.83.0"
+            self._send(200, {"status": "updating"})
             return
         if path == "/api/fleet/discovery-config":
             ESTADO["discovery"] = bool(body.get("enabled"))

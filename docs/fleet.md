@@ -1,8 +1,8 @@
 # Fleet
 
-Part of #26, the first half: see the routers the panel manages together, check
-them and adopt the ones announcing themselves on the LAN. The update batch
-lands in the second half.
+Closes #26: see the routers the panel manages together, check them, adopt the
+ones announcing themselves on the LAN and update them in a batch, one after
+another, with a result per device.
 
 The panel is the one that logs into each router: it has their passwords, the
 phone does not. Everything on this tab is a request to the panel or the last
@@ -48,6 +48,27 @@ message in the card and the peer stays in the discovered list.
   the issue line about rebooting selected devices is not something the app can
   do today. It would need a server endpoint first.
 
+## Updating a batch
+
+`POST /api/fleet/update` with `{"id":...}` only tells the peer to update its own
+panel; the peer restarts and the panel loses contact for a while. So the app
+treats that 200 as "order sent", never as "updated":
+
+1. The batch starts with `check-all`, because skipping or updating on a stale
+   status would be guessing. Every node gets its reason: no answer, already on
+   its version, or no identifier.
+2. The candidates are updated **sequentially**, one request per device.
+3. After each order, the app polls `POST /api/fleet/check` every 10 seconds for
+   up to 5 minutes. A node counts as updated only when a check sees a different,
+   non-empty `current_version` and it is reachable.
+4. Anything else is reported as it is: `Sin confirmar` when it never came back
+   with a new version, `Error` when the order itself failed, `Omitido` with the
+   reason when it never entered the batch.
+5. `Detener el lote` stops at the next poll. The device being updated stays
+   `Sin confirmar` ("detenido antes de confirmar") and whatever had not started
+   is `No ejecutado`. Nothing that had been ordered is rolled back: the app says
+   so instead of pretending.
+
 ## Tests
 
 `FleetRulesTest` covers the address composition, the header summary and the skip
@@ -57,3 +78,7 @@ only the essentials, the discovered peers with `seen_at`, and the adopt body
 `FleetViewModelTest` checks the three reads, the single check replacing only its
 node, the summary after checking all, the adopt body with the composed address
 and the reload, the rejection from the panel, the discovery switch and the 401.
+`FleetBatchTest` covers the batch: only the candidates get an order, the skips
+carry their reason, a 200 followed by the same version ends as `Sin confirmar`,
+a rejected order is `Error` without polling, cancelling leaves the current one
+unconfirmed and the rest unexecuted, and a failed `check-all` starts nothing.
