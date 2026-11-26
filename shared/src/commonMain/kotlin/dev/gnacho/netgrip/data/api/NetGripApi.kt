@@ -16,7 +16,12 @@ import dev.gnacho.netgrip.data.dto.ClientWriteResponseDto
 import dev.gnacho.netgrip.data.dto.ClientsDto
 import dev.gnacho.netgrip.data.dto.EthPortsDto
 import dev.gnacho.netgrip.data.dto.FleetDto
+import dev.gnacho.netgrip.data.dto.GuestConfigRequest
+import dev.gnacho.netgrip.data.dto.GuestProbeDto
 import dev.gnacho.netgrip.data.dto.HistoryDto
+import dev.gnacho.netgrip.data.dto.IoTConfigRequest
+import dev.gnacho.netgrip.data.dto.IoTProbeDto
+import dev.gnacho.netgrip.data.dto.NetworkWriteResponse
 import dev.gnacho.netgrip.data.dto.LedDto
 import dev.gnacho.netgrip.data.dto.LedsDto
 import dev.gnacho.netgrip.data.dto.LogEntryDto
@@ -40,7 +45,9 @@ import dev.gnacho.netgrip.data.dto.WolResponseDto
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.HttpClientEngine
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.plugins.timeout
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -95,6 +102,13 @@ class NetGripApi(
         expectSuccess = false
         install(ContentNegotiation) {
             json(json)
+        }
+        // Las escrituras de invitados e IoT esperan a un healthcheck de hasta
+        // 75 s en el router; el resto no necesita tanto.
+        install(HttpTimeout) {
+            connectTimeoutMillis = 10_000
+            socketTimeoutMillis = 30_000
+            requestTimeoutMillis = 20_000
         }
     }
 
@@ -248,6 +262,25 @@ class NetGripApi(
     suspend fun confirmStatus(): ApiResult<ConfirmStatusDto> =
         getData("/api/config/confirm") { json.decodeFromJsonElement(it) }
 
+    /** GET /api/guestwifi: red de invitados, solo lectura. */
+    suspend fun guestWifi(): ApiResult<GuestProbeDto> =
+        getData("/api/guestwifi") { json.decodeFromJsonElement(it) }
+
+    /**
+     * POST /api/guestwifi. El router hace snapshot y healthcheck, que puede
+     * tardar hasta 75 s: se pide con timeout largo en vez de cortar antes.
+     */
+    suspend fun setGuestWifi(cfg: GuestConfigRequest): ApiResult<NetworkWriteResponse<GuestProbeDto>> =
+        postJson("/api/guestwifi", cfg, longRunning = true) { json.decodeFromJsonElement(it) }
+
+    /** GET /api/iotwifi: SSID de dispositivos IoT. */
+    suspend fun iotWifi(): ApiResult<IoTProbeDto> =
+        getData("/api/iotwifi") { json.decodeFromJsonElement(it) }
+
+    /** POST /api/iotwifi, con el mismo healthcheck que invitados. */
+    suspend fun setIoTWifi(cfg: IoTConfigRequest): ApiResult<NetworkWriteResponse<IoTProbeDto>> =
+        postJson("/api/iotwifi", cfg, longRunning = true) { json.decodeFromJsonElement(it) }
+
     /** POST /api/config/confirm: conserva los cambios aplicados. */
     suspend fun keepConfirm(id: String): ApiResult<ConfirmStatusDto> =
         postJson("/api/config/confirm", ConfirmIdRequest(id)) { json.decodeFromJsonElement(it) }
@@ -291,11 +324,18 @@ class NetGripApi(
     private suspend inline fun <reified B, reified T> postJson(
         path: String,
         body: B,
+        longRunning: Boolean = false,
         crossinline decode: (JsonElement) -> T,
     ): ApiResult<T> = safeCall {
         val response = client.post("$baseUrl$path") {
             contentType(ContentType.Application.Json)
             sessionHeader()
+            if (longRunning) {
+                timeout {
+                    requestTimeoutMillis = LONG_WRITE_TIMEOUT_MILLIS
+                    socketTimeoutMillis = LONG_WRITE_TIMEOUT_MILLIS
+                }
+            }
             setBody(body)
         }
         when (response.status) {
@@ -353,6 +393,9 @@ class NetGripApi(
         }
 
     companion object {
+        /** El healthcheck de invitados e IoT sondea 75 veces, una por segundo. */
+        const val LONG_WRITE_TIMEOUT_MILLIS = 100_000L
+
         // NetGrip emite nombres distintos segun sirva HTTP o HTTPS, y acepta la legacy
         private val SESSION_COOKIE_NAMES = listOf(
             "__Secure-netgrip_session",

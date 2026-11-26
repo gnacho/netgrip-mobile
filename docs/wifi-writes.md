@@ -13,9 +13,11 @@ router's rollback window, re-reads the state and never shows the key.
 | Channel, width, power | `POST /api/wifi/radio` | The radio bounces; its clients reconnect |
 | Keep the applied change | `POST /api/config/confirm` | None |
 | Undo the applied change | `POST /api/config/confirm/rollback` | Restores the snapshot taken by the server |
+| Guest network | `GET|POST /api/guestwifi` | The router snapshots network, DHCP, firewall and wireless and reloads them |
+| IoT network | `GET|POST /api/iotwifi` | The router snapshots wireless and reloads the radio |
 
-Guest network, IoT network and WiFi schedules are not in this deliverable.
-They are the second half of #20.
+Guest network and IoT network are included. WiFi schedules are still open,
+the last part of #20.
 
 ## Contract
 
@@ -55,6 +57,23 @@ to keep a snapshot and arm a 120 s auto-revert window.
 - **Confirmation dialog** names what changes (name, key, security, hidden,
   emitting) and warns that clients may disconnect.
 
+## Guest and IoT
+
+- **Guest** exists only on a gateway. On a dumb AP the card explains why it
+  cannot be configured instead of offering a button.
+- **Key**: the router only requires it when it has to create the network. On an
+  existing guest network an empty field keeps the current key; the app checks
+  this locally and does not block edits that do not touch the key. The IoT
+  endpoint always rebuilds its sections, so it always asks for a key.
+- **Subnet** is optional and validated as IPv4, rejecting the network and
+  broadcast addresses. Empty keeps the current one.
+- **Isolation** is sent as `isolate` for guest and is fixed to on by the server
+  for IoT.
+- Neither endpoint arms the 120 s rollback window; they take a snapshot, apply,
+  run a healthcheck of up to 75 seconds and roll back on failure. The POSTs
+  therefore use a 100 s timeout instead of the app default, and the result is
+  read from the response and confirmed with a re-read.
+
 ## Verification after a write
 
 - On `status: applied` with a `confirm` window, the app opens the window, shows
@@ -74,7 +93,8 @@ to keep a snapshot and arm a 120 s auto-revert window.
 ./gradlew :shared:testAndroidHostTest :shared:compileKotlinIosSimulatorArm64 :androidApp:assembleDebug
 ```
 
-Host tests cover the encryption catalog and its "open only if already open"
+Host tests cover guest and IoT request bodies, the "key only when creating"
+rule, subnet validation, the rollback paths, the encryption catalog and its "open only if already open"
 rule, SSID and key limits, the change summary, channels and widths per band,
 the exact POST bodies (including omitted nulls), the confirm/keep/rollback
 calls, the rollback and server-error paths, the countdown expiry, and
