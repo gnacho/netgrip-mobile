@@ -16,6 +16,12 @@ import dev.gnacho.netgrip.data.dto.ClientWriteResponseDto
 import dev.gnacho.netgrip.data.dto.ClientsDto
 import dev.gnacho.netgrip.data.dto.EthPortsDto
 import dev.gnacho.netgrip.data.dto.FleetDto
+import dev.gnacho.netgrip.data.dto.FleetAdoptRequest
+import dev.gnacho.netgrip.data.dto.FleetDiscoveryConfigDto
+import dev.gnacho.netgrip.data.dto.FleetIdRequest
+import dev.gnacho.netgrip.data.dto.FleetNodeDto
+import dev.gnacho.netgrip.data.dto.FleetPeersDto
+import dev.gnacho.netgrip.data.dto.FleetStatusResponse
 import dev.gnacho.netgrip.data.dto.EmptyRequest
 import dev.gnacho.netgrip.data.dto.GuestConfigRequest
 import dev.gnacho.netgrip.data.dto.GuestProbeDto
@@ -250,6 +256,39 @@ class NetGripApi(
     /** GET /api/fleet: routers del fleet del panel, para importarlos como dispositivos. */
     suspend fun fleet(): ApiResult<FleetDto> =
         getData("/api/fleet") { json.decodeFromJsonElement(it) }
+
+    /**
+     * POST /api/fleet/check: el panel entra en [id] y devuelve version y
+     * alcanzabilidad frescas. El telefono no puede sondearlo por su cuenta.
+     */
+    suspend fun fleetCheck(id: String): ApiResult<FleetNodeDto> =
+        postJson("/api/fleet/check", FleetIdRequest(id), longRunning = true) {
+            json.decodeFromJsonElement(it)
+        }
+
+    /** POST /api/fleet/check-all: el panel comprueba todos en paralelo. */
+    suspend fun fleetCheckAll(): ApiResult<FleetDto> =
+        postJson("/api/fleet/check-all", EmptyRequest(), longRunning = true) {
+            json.decodeFromJsonElement(it)
+        }
+
+    /** GET /api/fleet/discovered: peers que se anuncian y no estan adoptados. */
+    suspend fun fleetDiscovered(): ApiResult<FleetPeersDto> =
+        getData("/api/fleet/discovered") { json.decodeFromJsonElement(it) }
+
+    /** POST /api/fleet/adopt: verifica credenciales en el peer y lo añade. */
+    suspend fun fleetAdopt(request: FleetAdoptRequest): ApiResult<FleetStatusResponse> =
+        postJson("/api/fleet/adopt", request, longRunning = true) { json.decodeFromJsonElement(it) }
+
+    /** GET /api/fleet/discovery-config. */
+    suspend fun fleetDiscoveryConfig(): ApiResult<FleetDiscoveryConfigDto> =
+        getData("/api/fleet/discovery-config") { json.decodeFromJsonElement(it) }
+
+    /** POST /api/fleet/discovery-config. */
+    suspend fun setFleetDiscoveryConfig(enabled: Boolean): ApiResult<FleetDiscoveryConfigDto> =
+        postJson("/api/fleet/discovery-config", FleetDiscoveryConfigDto(enabled)) {
+            json.decodeFromJsonElement(it)
+        }
 
     /** GET /api/clients/meta: nombres y tipos asignados a mano. */
     suspend fun clientMeta(): ApiResult<ClientMetaDto> =

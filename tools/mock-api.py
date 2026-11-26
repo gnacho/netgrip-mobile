@@ -66,6 +66,18 @@ ESTADO = {
     "quotas": {},
     "qos": {},
     "parental": {},
+    # Flota: routers gestionados por el panel y peers anunciados sin adoptar.
+    "fleet": [
+        {"id": "casa", "name": "Casa", "address": "192.168.1.1:8080", "reachable": True,
+         "current_version": "0.82.0", "latest_version": "0.82.0", "update_available": False},
+        {"id": "ofi", "name": "Oficina", "address": "192.168.10.2:8080"},
+        {"id": "attic", "name": "Desvan", "address": "192.168.1.90:8080"},
+    ],
+    "discovered": [
+        {"id": "salon", "name": "Salon", "version": "0.82.0", "address": "192.168.1.77",
+         "port": 8080, "seen_at": ""},
+    ],
+    "discovery": True,
     "firmware_started": False,
     "schedule": {"config": {"enabled": False, "intervalHours": 168,
                             "windowStart": 3, "windowEnd": 5},
@@ -211,6 +223,26 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             return {}
 
+    def _fleet_check(self, node):
+        """Simula lo que hace el panel: entrar en el router y leer version."""
+        if node["id"] == "attic":
+            return {
+                "id": node["id"], "name": node["name"], "address": node["address"],
+                "reachable": False, "error": "connect: connection refused",
+                "current_version": "", "latest_version": "", "update_available": False,
+            }
+        if node["id"] == "ofi":
+            return {
+                "id": node["id"], "name": node["name"], "address": node["address"],
+                "reachable": True, "current_version": "0.82.0",
+                "latest_version": "0.83.0", "update_available": True,
+            }
+        return {
+            "id": node["id"], "name": node["name"], "address": node["address"],
+            "reachable": True, "current_version": "0.82.0",
+            "latest_version": "0.82.0", "update_available": False,
+        }
+
     def _quotas_probe(self):
         """GET /api/quotas: intencion guardada + consumo de ejemplo."""
         usage = {}
@@ -332,6 +364,17 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/parental":
             self._send(200, {"rules": ESTADO["parental"], "ts": now() * 1000})
+            return
+        if path == "/api/fleet":
+            self._send(200, {"nodes": ESTADO["fleet"]})
+            return
+        if path == "/api/fleet/discovered":
+            adopted = {node["id"] for node in ESTADO["fleet"]}
+            peers = [peer for peer in ESTADO["discovered"] if peer["id"] not in adopted]
+            self._send(200, {"peers": peers})
+            return
+        if path == "/api/fleet/discovery-config":
+            self._send(200, {"enabled": ESTADO["discovery"]})
             return
         if path in BASE:
             self._send(200, BASE[path])
@@ -590,6 +633,53 @@ class Handler(BaseHTTPRequestHandler):
                 "paused": bool(body.get("paused")),
             }
             self._send(200, {"rules": ESTADO["parental"], "ts": now() * 1000})
+            return
+        if path == "/api/fleet/check":
+            node_id = str(body.get("id", ""))
+            for node in ESTADO["fleet"]:
+                if node["id"] == node_id:
+                    checked = self._fleet_check(node)
+                    node.clear()
+                    node.update(checked)
+                    self._send(200, checked)
+                    return
+            self._send(400, {"error": "node not found"})
+            return
+        if path == "/api/fleet/check-all":
+            checked = []
+            for node in ESTADO["fleet"]:
+                fresh = self._fleet_check(node)
+                node.clear()
+                node.update(fresh)
+                checked.append(fresh)
+            self._send(200, {"nodes": checked})
+            return
+        if path == "/api/fleet/discovery-config":
+            ESTADO["discovery"] = bool(body.get("enabled"))
+            self._send(200, {"enabled": ESTADO["discovery"]})
+            return
+        if path == "/api/fleet/adopt":
+            peer_id = str(body.get("id", ""))
+            peer = next((p for p in ESTADO["discovered"] if p["id"] == peer_id), None)
+            if peer is None:
+                self._send(400, {"error": "peer not discovered"})
+                return
+            if not body.get("password"):
+                self._send(400, {"error": "missing fields"})
+                return
+            if body["password"] == "mala":
+                self._send(400, {"error": "unreachable: login failed"})
+                return
+            ESTADO["fleet"].append({
+                "id": peer_id,
+                "name": body.get("name") or peer["name"],
+                "address": body.get("address") or peer["address"],
+                "reachable": True,
+                "current_version": peer.get("version", ""),
+                "latest_version": peer.get("version", ""),
+                "update_available": False,
+            })
+            self._send(200, {"status": "adopted"})
             return
         self._send(404, {"error": "not found"})
 
