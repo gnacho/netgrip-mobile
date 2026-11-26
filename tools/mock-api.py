@@ -12,6 +12,7 @@ Uso:
 import json
 import os
 import time
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(os.environ.get("MOCK_PORT", "18090"))
@@ -61,6 +62,10 @@ ESTADO = {
     "snapshots": [{"id": "20261126-120000", "timestamp": 1790000000, "configs": 9},
                   {"id": "20261125-090000", "timestamp": 1789900000, "configs": 8}],
     "snapshot_seq": 1,
+    # Politicas por dispositivo: cuota, velocidad y horario.
+    "quotas": {},
+    "qos": {},
+    "parental": {},
     "firmware_started": False,
     "schedule": {"config": {"enabled": False, "intervalHours": 168,
                             "windowStart": 3, "windowEnd": 5},
@@ -206,6 +211,26 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             return {}
 
+    def _quotas_probe(self):
+        """GET /api/quotas: intencion guardada + consumo de ejemplo."""
+        usage = {}
+        for mac, quota in ESTADO["quotas"].items():
+            used = 2 * 1024 ** 3
+            usage[mac] = {
+                "used": min(used, quota["limit"]),
+                "limit": quota["limit"],
+                "remaining": max(quota["limit"] - used, 0),
+                "period": "2026-11-26",
+                "throttled": quota.get("action") == "throttle",
+                "exceeded": used >= quota["limit"],
+            }
+        return {
+            "applicable": True,
+            "quotas": ESTADO["quotas"],
+            "usage": usage,
+            "ts": now() * 1000,
+        }
+
     def _traffic_timeline(self):
         """Cubos de 5 minutos de las ultimas horas, como los agrega netifyd."""
         bucket = now() // 300 * 300
@@ -298,6 +323,15 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/dpi/timeline":
             self._send(200, self._traffic_timeline())
+            return
+        if path == "/api/quotas":
+            self._send(200, self._quotas_probe())
+            return
+        if path == "/api/nftqos":
+            self._send(200, {"applicable": True, "limits": ESTADO["qos"]})
+            return
+        if path == "/api/parental":
+            self._send(200, {"rules": ESTADO["parental"], "ts": now() * 1000})
             return
         if path in BASE:
             self._send(200, BASE[path])
@@ -508,6 +542,55 @@ class Handler(BaseHTTPRequestHandler):
             ESTADO["snapshot"] = None
             self._send(200, {"status": "reverted"})
             return
+        if path == "/api/quotas":
+            mac = str(body.get("mac", "")).lower()
+            if not mac or not body.get("period") or int(body.get("limit", 0)) <= 0:
+                self._send(400, {"error": "quota needs mac, period and a positive limit"})
+                return
+            ESTADO["quotas"][mac] = {
+                "mac": mac,
+                "ip": body.get("ip", ""),
+                "period": body["period"],
+                "limit": int(body["limit"]),
+                "action": body.get("action", "notify"),
+                "throttle_kbps": int(body.get("throttle_kbps", 0)),
+            }
+            self._send(200, self._quotas_probe())
+            return
+        if path == "/api/nftqos":
+            mac = str(body.get("mac", "")).lower()
+            if not mac or not body.get("ip"):
+                self._send(400, {"error": "mac and ip are required"})
+                return
+            down = int(body.get("download", 0))
+            up = int(body.get("upload", 0))
+            if down <= 0 and up <= 0:
+                ESTADO["qos"].pop(mac, None)
+            else:
+                ESTADO["qos"][mac] = {
+                    "mac": mac,
+                    "ip": body["ip"],
+                    "download": down,
+                    "upload": up,
+                }
+            self._send(200, {"applicable": True, "limits": ESTADO["qos"]})
+            return
+        if path == "/api/parental":
+            mac = str(body.get("mac", "")).lower()
+            days = body.get("days") or []
+            if not mac or not days:
+                self._send(400, {"error": "mac and at least one day are required"})
+                return
+            ESTADO["parental"][mac] = {
+                "mac": mac,
+                "enabled": bool(body.get("enabled")),
+                "days": sorted(int(day) for day in days),
+                "start": body.get("start", "00:00"),
+                "end": body.get("end", "00:00"),
+                "paused": bool(body.get("paused")),
+            }
+            self._send(200, {"rules": ESTADO["parental"], "ts": now() * 1000})
+            return
         self._send(404, {"error": "not found"})
 
     def do_DELETE(self):
@@ -521,6 +604,20 @@ class Handler(BaseHTTPRequestHandler):
                     sid = part[3:]
             ESTADO["snapshots"] = [x for x in ESTADO["snapshots"] if x["id"] != sid]
             self._send(204)
+            return
+        if path in ("/api/quotas", "/api/nftqos", "/api/parental"):
+            mac = ""
+            for part in query.split("&"):
+                if part.startswith("mac="):
+                    mac = urllib.parse.unquote(part[4:]).lower()
+            table = {"/api/quotas": "quotas", "/api/nftqos": "qos", "/api/parental": "parental"}[path]
+            ESTADO[table].pop(mac, None)
+            if path == "/api/quotas":
+                self._send(200, self._quotas_probe())
+            elif path == "/api/nftqos":
+                self._send(200, {"applicable": True, "limits": ESTADO["qos"]})
+            else:
+                self._send(200, {"rules": ESTADO["parental"], "ts": now() * 1000})
             return
         self._send(404, {"error": "not found"})
 
