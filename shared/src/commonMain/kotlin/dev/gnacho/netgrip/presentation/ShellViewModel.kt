@@ -220,6 +220,35 @@ data class PoliciesState(
 )
 
 /**
+ * Estado de una actualizacion en lote, por dispositivo.
+ *
+ * `UPDATED` solo se marca cuando una comprobacion posterior ve la version
+ * nueva: un 200 del panel al aceptar la orden no es una actualizacion hecha.
+ */
+enum class FleetTaskStatus {
+    PENDING,
+    RUNNING,
+    UPDATED,
+    UNCONFIRMED,
+    FAILED,
+    SKIPPED,
+    CANCELLED,
+}
+
+data class FleetTask(
+    val id: String,
+    val name: String,
+    val status: FleetTaskStatus = FleetTaskStatus.PENDING,
+    val detail: String = "",
+)
+
+data class FleetBatchState(
+    val running: Boolean = false,
+    val cancelled: Boolean = false,
+    val tasks: List<FleetTask> = emptyList(),
+)
+
+/**
  * Estado de la pestana Flota: los routers que el panel gestiona juntos, su
  * ultimo estado conocido, los peers que se anuncian en la LAN y el
  * descubrimiento. Nada de aqui sondea routers desde el telefono.
@@ -239,6 +268,8 @@ data class FleetState(
     val adopting: String? = null,
     val actionMessage: String? = null,
     val actionError: String? = null,
+    /** Lote de actualizaciones y su resultado por dispositivo. */
+    val batch: FleetBatchState = FleetBatchState(),
 )
 
 /** Estado de la pestana Diagnostico. */
@@ -1273,6 +1304,184 @@ class ShellViewModel(
         _fleet.update { it.copy(actionMessage = null, actionError = null) }
     }
 
+    /**
+     * Actualiza en lote los routers con version nueva, uno despues de otro.
+     *
+     * Antes comprueba la flota: omitir o actualizar con el estado viejo seria
+     * adivinar. Cada router se da por actualizado solo cuando una comprobacion
+     * posterior ve la version nueva; un 200 al aceptar la orden no cuenta.
+     * Se puede detener entre comprobaciones, sin dejar el lote a medias.
+     */
+    fun startFleetUpdate() {
+        val state = _fleet.value
+        if (state.batch.running || state.checkingAll || state.checkingId != null) return
+        viewModelScope.launch {
+            _fleet.update {
+                it.copy(
+                    actionMessage = null,
+                    actionError = null,
+                    checkingAll = true,
+                    batch = FleetBatchState(running = true),
+                )
+            }
+            val fresh = api.fleetCheckAll()
+            if (fresh !is ApiResult.Ok) {
+                _fleet.update {
+                    it.copy(
+                        checkingAll = false,
+                        batch = FleetBatchState(),
+                        actionError = failWith(fresh),
+                    )
+                }
+                return@launch
+            }
+            val nodes = sortedFleet(fresh.value.nodes)
+            val tasks = nodes.map { node ->
+                val reason = FleetRules.skipReason(node)
+                FleetTask(
+                    id = node.id,
+                    name = node.name.ifBlank { node.address.ifBlank { node.id } },
+                    status = if (reason != null) FleetTaskStatus.SKIPPED else FleetTaskStatus.PENDING,
+                    detail = reason.orEmpty(),
+                )
+            }
+            _fleet.update {
+                it.copy(
+                    nodes = nodes,
+                    checkingAll = false,
+                    batch = FleetBatchState(running = true, tasks = tasks),
+                )
+            }
+            val candidates = tasks.filter { it.status == FleetTaskStatus.PENDING }
+            if (candidates.isEmpty()) {
+                finishFleetBatch("No hay nada que actualizar")
+                return@launch
+            }
+            for (task in candidates) {
+                if (_fleet.value.batch.cancelled) break
+                val before = _fleet.value.nodes.firstOrNull { it.id == task.id } ?: continue
+                updateFleetTask(task.id) { it.copy(status = FleetTaskStatus.RUNNING, detail = "enviando la orden") }
+                val result = api.fleetUpdate(task.id)
+                if (result !is ApiResult.Ok) {
+                    updateFleetTask(task.id) {
+                        it.copy(status = FleetTaskStatus.FAILED, detail = failWith(result))
+                    }
+                    continue
+                }
+                updateFleetTask(task.id) { it.copy(detail = "esperando a que vuelva") }
+                when (val outcome = awaitFleetVersion(before)) {
+                    is FleetUpdateOutcome.Updated -> updateFleetTask(task.id) {
+                        it.copy(status = FleetTaskStatus.UPDATED, detail = outcome.detail)
+                    }
+                    is FleetUpdateOutcome.Unconfirmed -> updateFleetTask(task.id) {
+                        it.copy(status = FleetTaskStatus.UNCONFIRMED, detail = outcome.detail)
+                    }
+                }
+            }
+            markFleetTasksCancelled()
+            finishFleetBatch(fleetBatchSummary())
+        }
+    }
+
+    /** Detiene el lote en la siguiente comprobacion. Lo ya lanzado no se revierte. */
+    fun cancelFleetUpdate() {
+        _fleet.update { it.copy(batch = it.batch.copy(cancelled = true)) }
+    }
+
+    fun clearFleetBatch() {
+        if (_fleet.value.batch.running) return
+        _fleet.update { it.copy(batch = FleetBatchState()) }
+    }
+
+    private fun updateFleetTask(id: String, change: (FleetTask) -> FleetTask) {
+        _fleet.update { state ->
+            state.copy(
+                batch = state.batch.copy(
+                    tasks = state.batch.tasks.map { if (it.id == id) change(it) else it },
+                ),
+            )
+        }
+    }
+
+    private fun markFleetTasksCancelled() {
+        _fleet.update { state ->
+            state.copy(
+                batch = state.batch.copy(
+                    tasks = state.batch.tasks.map {
+                        if (it.status == FleetTaskStatus.PENDING) {
+                            it.copy(
+                                status = FleetTaskStatus.CANCELLED,
+                                detail = "no ejecutado: lote detenido",
+                            )
+                        } else {
+                            it
+                        }
+                    },
+                ),
+            )
+        }
+    }
+
+    private fun finishFleetBatch(message: String) {
+        _fleet.update {
+            it.copy(
+                batch = it.batch.copy(running = false),
+                actionMessage = message,
+            )
+        }
+    }
+
+    private fun fleetBatchSummary(): String {
+        val tasks = _fleet.value.batch.tasks
+        val updated = tasks.count { it.status == FleetTaskStatus.UPDATED }
+        val unconfirmed = tasks.count { it.status == FleetTaskStatus.UNCONFIRMED }
+        val failed = tasks.count { it.status == FleetTaskStatus.FAILED }
+        val skipped = tasks.count { it.status == FleetTaskStatus.SKIPPED }
+        val cancelled = tasks.count { it.status == FleetTaskStatus.CANCELLED }
+        return buildList {
+            if (updated > 0) add("$updated actualizados")
+            if (unconfirmed > 0) add("$unconfirmed sin confirmar")
+            if (failed > 0) add("$failed con error")
+            if (skipped > 0) add("$skipped omitidos")
+            if (cancelled > 0) add("$cancelled no ejecutados")
+        }.joinToString(", ").ifBlank { "Sin cambios" }
+    }
+
+    /**
+     * Espera a que el peer vuelva con una version distinta de [before]. El
+     * panel del router se reinicia al actualizarse, asi que los fallos de
+     * comprobacion intermedios son normales y se siguen esperando.
+     */
+    private suspend fun awaitFleetVersion(before: FleetNodeDto): FleetUpdateOutcome {
+        repeat(UPDATE_POLLS) {
+            delay(UPDATE_POLL_MS)
+            if (_fleet.value.batch.cancelled) {
+                return FleetUpdateOutcome.Unconfirmed("detenido antes de confirmar")
+            }
+            when (val result = api.fleetCheck(before.id)) {
+                is ApiResult.Ok -> {
+                    val node = result.value
+                    _fleet.update { state -> state.copy(nodes = replaceFleetNode(state.nodes, node)) }
+                    val changed = node.currentVersion.isNotBlank() && node.currentVersion != before.currentVersion
+                    if (node.reachable && changed) {
+                        return FleetUpdateOutcome.Updated("ahora en la ${node.currentVersion}")
+                    }
+                }
+                ApiResult.Unauthorized -> _sessionExpired.value = true
+                else -> Unit
+            }
+        }
+        val minutes = UPDATE_POLLS * UPDATE_POLL_MS / 60_000
+        val last = _fleet.value.nodes.firstOrNull { it.id == before.id }
+        val detail = when {
+            last == null -> "sin datos tras $minutes min"
+            !last.reachable -> "sigue sin responder tras $minutes min"
+            last.currentVersion.isNotBlank() -> "sigue en la ${last.currentVersion} tras $minutes min"
+            else -> "sin confirmar tras $minutes min"
+        }
+        return FleetUpdateOutcome.Unconfirmed(detail)
+    }
+
     private fun sortedFleet(nodes: List<FleetNodeDto>): List<FleetNodeDto> =
         nodes.sortedBy { it.name.lowercase().ifBlank { it.address.lowercase() } }
 
@@ -2135,6 +2344,12 @@ class ShellViewModel(
 
     private enum class BootOutcome { Back, SessionLost, Timeout }
 
+    /** Resultado de esperar la version nueva de un router tras actualizarlo. */
+    private sealed interface FleetUpdateOutcome {
+        data class Updated(val detail: String) : FleetUpdateOutcome
+        data class Unconfirmed(val detail: String) : FleetUpdateOutcome
+    }
+
     private companion object {
         /** /api/clients se cachea 2 s en el servidor: reintento unico. */
         const val WRITE_RETRY_DELAY_MS = 2_100L
@@ -2148,5 +2363,9 @@ class ShellViewModel(
 
         /** El panel se reinicia en segundos. */
         const val SELF_UPDATE_ATTEMPTS = 90
+
+        /** Tras actualizar un peer, se le comprueba cada 10 s hasta 5 min. */
+        const val UPDATE_POLL_MS = 10_000L
+        const val UPDATE_POLLS = 30
     }
 }

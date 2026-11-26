@@ -272,6 +272,16 @@ class NetGripApi(
             json.decodeFromJsonElement(it)
         }
 
+    /**
+     * POST /api/fleet/update: el panel manda al peer actualizar su panel. La
+     * respuesta solo dice que la orden salio; que haya funcionado se comprueba
+     * despues con /api/fleet/check.
+     */
+    suspend fun fleetUpdate(id: String): ApiResult<FleetStatusResponse> =
+        postJson("/api/fleet/update", FleetIdRequest(id), longRunning = true) {
+            json.decodeFromJsonElement(it)
+        }
+
     /** GET /api/fleet/discovered: peers que se anuncian y no estan adoptados. */
     suspend fun fleetDiscovered(): ApiResult<FleetPeersDto> =
         getData("/api/fleet/discovered") { json.decodeFromJsonElement(it) }
