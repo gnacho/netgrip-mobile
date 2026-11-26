@@ -38,6 +38,9 @@ import dev.gnacho.netgrip.data.dto.RadioEditRequest
 import dev.gnacho.netgrip.data.dto.RadioWriteResponse
 import dev.gnacho.netgrip.data.dto.WifiDto
 import dev.gnacho.netgrip.data.dto.WifiEditRequest
+import dev.gnacho.netgrip.data.dto.WifiScheduleDto
+import dev.gnacho.netgrip.data.dto.WifiScheduleWriteResponse
+import dev.gnacho.netgrip.data.dto.WifiSchedulesDto
 import dev.gnacho.netgrip.data.dto.WifiWriteResponse
 import dev.gnacho.netgrip.data.dto.WirelessRadioDto
 import dev.gnacho.netgrip.data.dto.WolRequest
@@ -280,6 +283,14 @@ class NetGripApi(
     /** POST /api/iotwifi, con el mismo healthcheck que invitados. */
     suspend fun setIoTWifi(cfg: IoTConfigRequest): ApiResult<NetworkWriteResponse<IoTProbeDto>> =
         postJson("/api/iotwifi", cfg, longRunning = true) { json.decodeFromJsonElement(it) }
+
+    /** GET /api/wifischedule: horario de cada interfaz WiFi. */
+    suspend fun wifiSchedules(): ApiResult<WifiSchedulesDto> =
+        getData("/api/wifischedule") { json.decodeFromJsonElement(it) }
+
+    /** POST /api/wifischedule: guarda el horario de una interfaz. */
+    suspend fun setWifiSchedule(schedule: WifiScheduleDto): ApiResult<WifiScheduleWriteResponse> =
+        postJson("/api/wifischedule", schedule) { json.decodeFromJsonElement(it) }
 
     /** POST /api/config/confirm: conserva los cambios aplicados. */
     suspend fun keepConfirm(id: String): ApiResult<ConfirmStatusDto> =
