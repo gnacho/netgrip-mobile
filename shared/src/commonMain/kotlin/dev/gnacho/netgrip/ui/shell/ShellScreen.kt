@@ -189,7 +189,12 @@ fun ShellScreen(
                     ShellTab.TRAFFIC -> TrafficScreen(viewModel)
                     ShellTab.WIFI -> WifiScreen(viewModel)
                     ShellTab.REMOTE -> RemoteAccessScreen(viewModel)
-                    ShellTab.FLEET -> FleetScreen(viewModel)
+                    ShellTab.FLEET -> FleetScreen(
+                        viewModel = viewModel,
+                        networks = sessionViewModel.networks,
+                        currentNetworkId = sessionViewModel.currentNetworkId,
+                        onAdoptDevice = sessionViewModel::addAdoptedDevice,
+                    )
                     ShellTab.SNAPSHOTS -> SnapshotsScreen(viewModel)
                     ShellTab.DIAGNOSTICS -> DiagnosticsScreen(viewModel)
                     ShellTab.PORTS -> PortsScreen(viewModel)

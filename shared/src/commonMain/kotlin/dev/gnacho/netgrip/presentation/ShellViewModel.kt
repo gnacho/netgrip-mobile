@@ -1278,7 +1278,12 @@ class ShellViewModel(
      * POST /api/fleet/adopt. El panel verifica las credenciales contra el peer
      * antes de guardarlo; si no entran, el error es suyo y se muestra tal cual.
      */
-    fun adoptFleetPeer(peer: DiscoveredPeerDto, name: String, password: String) {
+    fun adoptFleetPeer(
+        peer: DiscoveredPeerDto,
+        name: String,
+        password: String,
+        onAdopted: (FleetAdoptRequest) -> Unit = {},
+    ) {
         if (_fleet.value.adopting != null) return
         val cleanName = name.trim()
         val address = FleetRules.hostPort(peer.address, peer.port)
@@ -1293,6 +1298,7 @@ class ShellViewModel(
                             actionMessage = "$cleanName añadido a la flota",
                         )
                     }
+                    onAdopted(request)
                     loadFleet()
                 }
                 else -> _fleet.update { it.copy(adopting = null, actionError = failWith(result)) }

@@ -89,6 +89,11 @@ class SessionViewModel(
 
     val currentDevice: SavedDevice? get() = sites.currentDevice
 
+    /** Todas las redes guardadas, para elegir dónde colocar un router adoptado. */
+    val networks: List<SavedNetwork> get() = sites.networks
+
+    val currentNetworkId: String? get() = sites.currentNetworkId
+
     /**
      * Al arrancar: carga las redes guardadas (migrando la sesion unica de
      * versiones anteriores) y restaura la del dispositivo actual.
@@ -455,6 +460,44 @@ class SessionViewModel(
                 ApiResult.Unauthorized -> onSessionExpired()
                 else -> siteMessage = "No se pudo leer el fleet del router"
             }
+        }
+    }
+
+    /**
+     * Añade a una red un router que el panel acaba de adoptar en su flota.
+     *
+     * No cambia el dispositivo actual: el usuario puede estar conectado a otro
+     * router y una adopción no debe sacarlo de su sesión. Si el router ya está
+     * en cualquier red, no se duplica.
+     */
+    fun addAdoptedDevice(url: String, name: String, networkId: String? = null) {
+        viewModelScope.launch {
+            ensureSites()
+            val cleanUrl = SiteRules.urlFromFleetAddress(url)
+            if (cleanUrl.isBlank()) return@launch
+            val id = SiteRules.deviceId(cleanUrl)
+            var state = sites
+            if (state.device(id) != null) {
+                siteMessage = "Ese router ya está en tus redes"
+                return@launch
+            }
+            val device = SavedDevice(id = id, url = cleanUrl, name = name.trim())
+            val target = networkId?.let { state.network(it) } ?: state.currentNetwork
+            state = if (target == null) {
+                val network = SavedNetwork(
+                    id = SiteRules.networkId(SiteRules.DEFAULT_NETWORK_NAME, state.networks),
+                    name = SiteRules.DEFAULT_NETWORK_NAME,
+                    devices = listOf(device),
+                )
+                state.copy(
+                    networks = state.networks + network,
+                    currentNetworkId = state.currentNetworkId ?: network.id,
+                )
+            } else {
+                state.withDevice(target.id, device)
+            }
+            sites = state
+            persist()
         }
     }
 

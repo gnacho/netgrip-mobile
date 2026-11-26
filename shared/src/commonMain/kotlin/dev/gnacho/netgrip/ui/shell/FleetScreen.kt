@@ -18,6 +18,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -42,6 +43,8 @@ import androidx.compose.ui.unit.dp
 import dev.gnacho.netgrip.data.dto.DiscoveredPeerDto
 import dev.gnacho.netgrip.data.dto.FleetNodeDto
 import dev.gnacho.netgrip.domain.fleet.FleetRules
+import dev.gnacho.netgrip.domain.sites.SavedNetwork
+import dev.gnacho.netgrip.domain.sites.SiteRules
 import dev.gnacho.netgrip.presentation.FleetState
 import dev.gnacho.netgrip.presentation.FleetTaskStatus
 import dev.gnacho.netgrip.presentation.ShellViewModel
@@ -63,7 +66,12 @@ import dev.gnacho.netgrip.ui.theme.MonoStyle
  * estado conocido y `POST /api/fleet/check` uno fresco, misma forma.
  */
 @Composable
-fun FleetScreen(viewModel: ShellViewModel) {
+fun FleetScreen(
+    viewModel: ShellViewModel,
+    networks: List<SavedNetwork> = emptyList(),
+    currentNetworkId: String? = null,
+    onAdoptDevice: (url: String, name: String, networkId: String?) -> Unit = { _, _, _ -> },
+) {
     val state by viewModel.fleet.collectAsState()
     LaunchedEffect(Unit) { viewModel.ensureFleet() }
 
@@ -106,7 +114,7 @@ fun FleetScreen(viewModel: ShellViewModel) {
                     NodeCard(node, state, viewModel)
                 }
                 item {
-                    DiscoveryCard(state, viewModel)
+                    DiscoveryCard(state, viewModel, networks, currentNetworkId, onAdoptDevice)
                 }
                 item {
                     Text(
@@ -354,7 +362,13 @@ private fun NodeCard(node: FleetNodeDto, state: FleetState, viewModel: ShellView
 }
 
 @Composable
-private fun DiscoveryCard(state: FleetState, viewModel: ShellViewModel) {
+private fun DiscoveryCard(
+    state: FleetState,
+    viewModel: ShellViewModel,
+    networks: List<SavedNetwork>,
+    currentNetworkId: String?,
+    onAdoptDevice: (url: String, name: String, networkId: String?) -> Unit,
+) {
     var adopting by remember { mutableStateOf<DiscoveredPeerDto?>(null) }
     NetGripCard(
         eyebrow = "Descubrimiento",
@@ -436,9 +450,13 @@ private fun DiscoveryCard(state: FleetState, viewModel: ShellViewModel) {
     adopting?.let { peer ->
         AdoptDialog(
             peer = peer,
+            networks = networks,
+            currentNetworkId = currentNetworkId,
             busy = state.adopting != null,
-            onAdopt = { name, password ->
-                viewModel.adoptFleetPeer(peer, name, password)
+            onAdopt = { name, password, networkId ->
+                viewModel.adoptFleetPeer(peer, name, password) { request ->
+                    onAdoptDevice(SiteRules.urlFromFleetAddress(request.address), name, networkId)
+                }
                 adopting = null
             },
             onDismiss = { adopting = null },
@@ -449,12 +467,17 @@ private fun DiscoveryCard(state: FleetState, viewModel: ShellViewModel) {
 @Composable
 private fun AdoptDialog(
     peer: DiscoveredPeerDto,
+    networks: List<SavedNetwork>,
+    currentNetworkId: String?,
     busy: Boolean,
-    onAdopt: (name: String, password: String) -> Unit,
+    onAdopt: (name: String, password: String, networkId: String?) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var name by remember(peer.id) { mutableStateOf(peer.name.ifBlank { peer.id }) }
     var password by remember(peer.id) { mutableStateOf("") }
+    var networkId by remember(peer.id, currentNetworkId) {
+        mutableStateOf(currentNetworkId ?: networks.firstOrNull()?.id)
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Añadir a la flota") },
@@ -490,11 +513,33 @@ private fun AdoptDialog(
                     ),
                     modifier = Modifier.fillMaxWidth(),
                 )
+                if (networks.isEmpty()) {
+                    Text(
+                        "No hay redes en la app: se creará una con este router.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    Text(
+                        "Añadirlo también a esta red",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        networks.forEach { network ->
+                            FilterChip(
+                                selected = network.id == networkId,
+                                onClick = { networkId = network.id },
+                                label = { Text(network.name) },
+                            )
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
             TextButton(
-                onClick = { onAdopt(name, password) },
+                onClick = { onAdopt(name, password, networkId) },
                 enabled = !busy && name.isNotBlank() && password.isNotBlank(),
             ) {
                 Text("Adoptar")
