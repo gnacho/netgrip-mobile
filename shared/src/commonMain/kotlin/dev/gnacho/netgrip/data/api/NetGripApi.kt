@@ -1,5 +1,6 @@
 package dev.gnacho.netgrip.data.api
 
+import io.ktor.http.encodeURLParameter
 import dev.gnacho.netgrip.core.network.ApiResult
 import dev.gnacho.netgrip.core.network.CertificateChangedException
 import dev.gnacho.netgrip.core.network.SelfSignedCertificatesUnsupportedException
@@ -16,7 +17,11 @@ import dev.gnacho.netgrip.data.dto.ClientsDto
 import dev.gnacho.netgrip.data.dto.EthPortsDto
 import dev.gnacho.netgrip.data.dto.FleetDto
 import dev.gnacho.netgrip.data.dto.HistoryDto
+import dev.gnacho.netgrip.data.dto.LedDto
+import dev.gnacho.netgrip.data.dto.LedsDto
+import dev.gnacho.netgrip.data.dto.LogEntryDto
 import dev.gnacho.netgrip.data.dto.LoginRequest
+import dev.gnacho.netgrip.data.dto.LogsDto
 import dev.gnacho.netgrip.data.dto.MdnsDto
 import dev.gnacho.netgrip.data.dto.ModeDto
 import dev.gnacho.netgrip.data.dto.SelfUpdateDto
@@ -160,6 +165,20 @@ class NetGripApi(
 
     suspend fun selfUpdate(): ApiResult<SelfUpdateDto> =
         getData("/api/selfupdate") { json.decodeFromJsonElement(it) }
+
+    /**
+     * GET /api/logs. [lines] lo acota el servidor (200 por defecto, maximo
+     * 1000) y [filter] es un texto, no una expresion regular: se aplica en Go.
+     */
+    suspend fun logs(lines: Int = 200, filter: String = ""): ApiResult<LogsDto> {
+        val query = StringBuilder("/api/logs?lines=").append(lines)
+        if (filter.isNotBlank()) query.append("&filter=").append(filter.encodeURLParameter())
+        return getData(query.toString()) { json.decodeFromJsonElement(it) }
+    }
+
+    /** GET /api/leds: inventario de los LEDs configurados, solo lectura. */
+    suspend fun leds(): ApiResult<LedsDto> =
+        getData("/api/leds") { json.decodeFromJsonElement(it) }
 
     /** GET /api/fleet: routers del fleet del panel, para importarlos como dispositivos. */
     suspend fun fleet(): ApiResult<FleetDto> =

@@ -6,5 +6,6 @@ enum class ShellTab(val label: String) {
     CLIENTS("Clientes"),
     WIFI("WiFi"),
     PORTS("Puertos"),
+    DIAGNOSTICS("Diagnóstico"),
     SETTINGS("Ajustes"),
 }
