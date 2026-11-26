@@ -138,6 +138,12 @@ data class SettingsState(
     val access: AccessDto? = null,
     val mdns: MdnsDto? = null,
     val selfUpdate: SelfUpdateDto? = null,
+    /** Acciones de sistema en curso (reinicio, contrasena). */
+    val actionBusy: Boolean = false,
+    val actionMessage: String? = null,
+    val actionError: String? = null,
+    /** El router acepto el reinicio y se esta esperando a que vuelva. */
+    val rebooting: Boolean = false,
 )
 
 /**
@@ -174,6 +180,10 @@ class ShellViewModel(
 
     private val _sessionExpired = MutableStateFlow(false)
     val sessionExpired: StateFlow<Boolean> = _sessionExpired.asStateFlow()
+
+    /** La contrasena cambio: todas las sesiones murieron y toca reentrar. */
+    private val _passwordChanged = MutableStateFlow(false)
+    val passwordChanged: StateFlow<Boolean> = _passwordChanged.asStateFlow()
 
     private var panelJob: Job? = null
     private var clientsJob: Job? = null
@@ -745,7 +755,9 @@ class ShellViewModel(
         if (settingsJob?.isActive == true) return
         settingsJob = viewModelScope.launch {
             _settings.update { it.copy(loading = true, error = null) }
-            var next = SettingsState(loading = false, loaded = true)
+            // Conserva los avisos de la ultima accion: recargar no debe
+            // borrar el resultado que el usuario acaba de provocar.
+            var next = _settings.value.copy(loading = false, loaded = true, error = null)
             var failure: String? = null
             fun <T> merge(result: ApiResult<T>, apply: (T) -> Unit) {
                 when (result) {
@@ -770,6 +782,91 @@ class ShellViewModel(
             }
             _settings.value = next.copy(error = failure)
         }
+    }
+
+    /**
+     * POST /api/reboot y espera a que el router vuelva. No pinta nada al
+     * aceptarse: la app solo confirma cuando /api/me responde otra vez.
+     */
+    fun rebootRouter() {
+        if (_settings.value.actionBusy) return
+        viewModelScope.launch {
+            _settings.update { it.copy(actionBusy = true, actionMessage = null, actionError = null) }
+            when (val result = api.reboot()) {
+                is ApiResult.Ok -> {
+                    _settings.update { it.copy(rebooting = true) }
+                    when (waitForRouter()) {
+                        BootOutcome.Back -> {
+                            _settings.update {
+                                it.copy(
+                                    rebooting = false,
+                                    actionBusy = false,
+                                    actionMessage = "El router ha vuelto a responder",
+                                )
+                            }
+                            loadSettings()
+                        }
+                        BootOutcome.SessionLost -> {
+                            _settings.update { it.copy(rebooting = false, actionBusy = false) }
+                            _sessionExpired.value = true
+                        }
+                        BootOutcome.Timeout -> {
+                            _settings.update {
+                                it.copy(
+                                    rebooting = false,
+                                    actionBusy = false,
+                                    actionError = "El router no responde todavía. Puede tardar algo más: " +
+                                        "comprueba la red o vuelve a entrar cuando esté listo.",
+                                )
+                            }
+                        }
+                    }
+                }
+                else -> _settings.update {
+                    it.copy(actionBusy = false, actionError = failWith(result))
+                }
+            }
+        }
+    }
+
+    /**
+     * POST /api/password. El router invalida todas las sesiones, asi que un
+     * 204 cierra la sesion de la app y devuelve al login con un aviso.
+     */
+    fun changePassword(current: String, next: String) {
+        if (_settings.value.actionBusy) return
+        viewModelScope.launch {
+            _settings.update { it.copy(actionBusy = true, actionMessage = null, actionError = null) }
+            when (val result = api.changePassword(current, next)) {
+                is ApiResult.Ok -> {
+                    _settings.update { it.copy(actionBusy = false) }
+                    _passwordChanged.value = true
+                }
+                else -> _settings.update {
+                    it.copy(actionBusy = false, actionError = failWith(result))
+                }
+            }
+        }
+    }
+
+    fun clearSettingsFeedback() {
+        _settings.update { it.copy(actionMessage = null, actionError = null) }
+    }
+
+    /**
+     * Sondeo de vuelta tras un reinicio: cada 3 s durante 3 minutos. Un 204
+     * es que el router esta de vuelta, un 401 que perdio la sesion.
+     */
+    private suspend fun waitForRouter(): BootOutcome {
+        repeat(REBOOT_ATTEMPTS) {
+            delay(REBOOT_INTERVAL_MS)
+            when (api.me()) {
+                is ApiResult.Ok -> return BootOutcome.Back
+                ApiResult.Unauthorized -> return BootOutcome.SessionLost
+                else -> Unit
+            }
+        }
+        return BootOutcome.Timeout
     }
 
     /** Refresca la pestana indicada. */
@@ -1000,8 +1097,14 @@ class ShellViewModel(
 
     private data class ActionOutcome(val message: String, val isError: Boolean)
 
+    private enum class BootOutcome { Back, SessionLost, Timeout }
+
     private companion object {
         /** /api/clients se cachea 2 s en el servidor: reintento unico. */
         const val WRITE_RETRY_DELAY_MS = 2_100L
+
+        /** 60 sondeos cada 3 s: tres minutos para que el router vuelva. */
+        const val REBOOT_ATTEMPTS = 60
+        const val REBOOT_INTERVAL_MS = 3_000L
     }
 }

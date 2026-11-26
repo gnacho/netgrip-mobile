@@ -151,6 +151,14 @@ fun AccessScreen(target: LoginTarget, viewModel: SessionViewModel, onBack: () ->
             }
             Spacer(Modifier.height(16.dp))
             LoginErrorState(viewModel.uiState)
+            viewModel.loginNotice?.let { notice ->
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    notice,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
             Spacer(Modifier.height(16.dp))
         }
         Button(

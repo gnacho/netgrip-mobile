@@ -16,6 +16,7 @@ import dev.gnacho.netgrip.data.dto.ClientWriteResponseDto
 import dev.gnacho.netgrip.data.dto.ClientsDto
 import dev.gnacho.netgrip.data.dto.EthPortsDto
 import dev.gnacho.netgrip.data.dto.FleetDto
+import dev.gnacho.netgrip.data.dto.EmptyRequest
 import dev.gnacho.netgrip.data.dto.GuestConfigRequest
 import dev.gnacho.netgrip.data.dto.GuestProbeDto
 import dev.gnacho.netgrip.data.dto.HistoryDto
@@ -28,6 +29,8 @@ import dev.gnacho.netgrip.data.dto.LogEntryDto
 import dev.gnacho.netgrip.data.dto.LoginRequest
 import dev.gnacho.netgrip.data.dto.LogsDto
 import dev.gnacho.netgrip.data.dto.MdnsDto
+import dev.gnacho.netgrip.data.dto.PasswordChangeRequest
+import dev.gnacho.netgrip.data.dto.RebootResponseDto
 import dev.gnacho.netgrip.data.dto.ModeDto
 import dev.gnacho.netgrip.data.dto.SelfUpdateDto
 import dev.gnacho.netgrip.data.dto.SystemDto
@@ -244,6 +247,31 @@ class NetGripApi(
         postJson("/api/clients/reserve", ClientReserveRequest(mac, ip, reserved)) {
             json.decodeFromJsonElement(it)
         }
+
+    /**
+     * POST /api/reboot. Responde antes de reiniciar; a partir de ahi la sesion
+     * puede morir y la app tiene que sondear /api/me hasta que vuelva.
+     */
+    suspend fun reboot(): ApiResult<RebootResponseDto> =
+        postJson("/api/reboot", EmptyRequest()) { json.decodeFromJsonElement(it) }
+
+    /**
+     * POST /api/password. Responde 204 y mata TODAS las sesiones del panel,
+     * incluida la de esta app: despues hay que volver a entrar.
+     */
+    suspend fun changePassword(current: String, next: String): ApiResult<Unit> = safeCall {
+        val response = client.post("$baseUrl/api/password") {
+            contentType(ContentType.Application.Json)
+            sessionHeader()
+            setBody(PasswordChangeRequest(current, next))
+        }
+        when (response.status) {
+            HttpStatusCode.NoContent, HttpStatusCode.OK -> ApiResult.Ok(Unit)
+            HttpStatusCode.Unauthorized -> ApiResult.Unauthorized
+            HttpStatusCode.TooManyRequests -> ApiResult.RateLimited(retryAfter(response))
+            else -> ApiResult.HttpError(response.status.value, errorMessage(response))
+        }
+    }
 
     /** POST /api/wol: paquete magico, no persiste nada en el router. */
     suspend fun wakeOnLan(mac: String): ApiResult<WolResponseDto> =
