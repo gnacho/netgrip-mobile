@@ -14,6 +14,11 @@ import dev.gnacho.netgrip.data.dto.EthPortDto
 import dev.gnacho.netgrip.data.dto.ConfigDiffDto
 import dev.gnacho.netgrip.data.dto.ConfigSnapshotDto
 import dev.gnacho.netgrip.data.dto.DdnsDto
+import dev.gnacho.netgrip.data.dto.DpiAppDto
+import dev.gnacho.netgrip.data.dto.DpiProbeDto
+import dev.gnacho.netgrip.data.dto.DpiTimelineDto
+import dev.gnacho.netgrip.data.dto.NlbwUsageDto
+import dev.gnacho.netgrip.data.dto.NlbwmonProbeDto
 import dev.gnacho.netgrip.data.dto.GuestConfigRequest
 import dev.gnacho.netgrip.data.dto.GuestProbeDto
 import dev.gnacho.netgrip.data.dto.HistoryEntryDto
@@ -161,6 +166,29 @@ data class PortsState(
     val ports: List<EthPortDto> = emptyList(),
 )
 
+/**
+ * Estado de la pestana Trafico.
+ *
+ * Todo lo que hay aqui lo conto el router: nlbwmon para los bytes por
+ * dispositivo y protocolo, netifyd para las aplicaciones. La app no deriva
+ * tasas de estos contadores.
+ */
+data class TrafficState(
+    val loading: Boolean = false,
+    val loaded: Boolean = false,
+    val error: String? = null,
+    /** nlbwmon: null mientras no se haya leido. */
+    val nlbwmon: NlbwmonProbeDto? = null,
+    val devices: List<NlbwUsageDto> = emptyList(),
+    val apps: List<NlbwUsageDto> = emptyList(),
+    /** netifyd: null mientras no se haya leido. */
+    val dpi: DpiProbeDto? = null,
+    val dpiApps: List<DpiAppDto> = emptyList(),
+    val timeline: DpiTimelineDto? = null,
+    /** Nombres de los clientes conocidos, por MAC, para resolver las filas. */
+    val names: Map<String, String> = emptyMap(),
+)
+
 /** Estado de la pestana Diagnostico. */
 data class DiagnosticsState(
     val loading: Boolean = false,
@@ -247,6 +275,9 @@ class ShellViewModel(
     private val _diagnostics = MutableStateFlow(DiagnosticsState())
     val diagnostics: StateFlow<DiagnosticsState> = _diagnostics.asStateFlow()
 
+    private val _traffic = MutableStateFlow(TrafficState())
+    val traffic: StateFlow<TrafficState> = _traffic.asStateFlow()
+
     private val _sessionExpired = MutableStateFlow(false)
     val sessionExpired: StateFlow<Boolean> = _sessionExpired.asStateFlow()
 
@@ -261,6 +292,7 @@ class ShellViewModel(
     private var remoteJob: Job? = null
     private var snapshotsJob: Job? = null
     private var diagnosticsJob: Job? = null
+    private var trafficJob: Job? = null
     private var settingsJob: Job? = null
     private var confirmJob: Job? = null
 
@@ -846,6 +878,78 @@ class ShellViewModel(
                 }
             }
             _diagnostics.value = next.copy(error = failure)
+        }
+    }
+
+    fun ensureTraffic() {
+        if (_traffic.value.loaded || trafficJob?.isActive == true) return
+        loadTraffic()
+    }
+
+    /**
+     * Lecturas de contabilidad (nlbwmon) y de aplicaciones (netifyd). Cada una
+     * es independiente: si una falta, el resto de la pantalla sigue. Nada de
+     * esta pantalla escribe en el equipo.
+     */
+    fun loadTraffic() {
+        if (trafficJob?.isActive == true) return
+        trafficJob = viewModelScope.launch {
+            _traffic.update { it.copy(loading = true, error = null) }
+            var next = _traffic.value.copy(loading = false, loaded = true)
+            var failure: String? = null
+            fun fail(result: ApiResult<*>) {
+                if (result == ApiResult.Unauthorized) _sessionExpired.value = true
+                failure = failure ?: describe(result)
+            }
+            coroutineScope {
+                val nlbwmon = async { api.nlbwmon() }
+                val top = async { api.nlbwmonTop() }
+                val dpi = async { api.dpi() }
+                val dpiApps = async { api.dpiApps() }
+                val timeline = async { api.dpiTimeline() }
+                val clients = async { api.clients() }
+                val meta = async { api.clientMeta() }
+
+                when (val result = nlbwmon.await()) {
+                    is ApiResult.Ok -> next = next.copy(nlbwmon = result.value)
+                    else -> fail(result)
+                }
+                when (val result = top.await()) {
+                    is ApiResult.Ok -> next = next.copy(
+                        devices = result.value.devices,
+                        apps = result.value.apps,
+                    )
+                    else -> fail(result)
+                }
+                when (val result = dpi.await()) {
+                    is ApiResult.Ok -> next = next.copy(dpi = result.value)
+                    else -> fail(result)
+                }
+                when (val result = dpiApps.await()) {
+                    is ApiResult.Ok -> next = next.copy(dpiApps = result.value.apps)
+                    else -> fail(result)
+                }
+                when (val result = timeline.await()) {
+                    is ApiResult.Ok -> next = next.copy(timeline = result.value)
+                    else -> fail(result)
+                }
+                // Los nombres solo adornan las filas: si fallan no se avisa,
+                // salvo que la sesion se haya caido.
+                val clientsResult = clients.await()
+                val metaResult = meta.await()
+                if (clientsResult == ApiResult.Unauthorized || metaResult == ApiResult.Unauthorized) {
+                    _sessionExpired.value = true
+                }
+                if (clientsResult is ApiResult.Ok && metaResult is ApiResult.Ok) {
+                    val names = mutableMapOf<String, String>()
+                    clientsResult.value.clients.forEach { client ->
+                        val key = client.mac.lowercase()
+                        if (key.isNotBlank()) names[key] = ClientMetaRules.effectiveName(metaResult.value.meta, client)
+                    }
+                    next = next.copy(names = names)
+                }
+            }
+            _traffic.value = next.copy(error = failure)
         }
     }
 
@@ -1467,6 +1571,7 @@ class ShellViewModel(
             ShellTab.REMOTE -> loadRemote()
             ShellTab.SNAPSHOTS -> loadSnapshots()
             ShellTab.PORTS -> loadPorts()
+            ShellTab.TRAFFIC -> loadTraffic()
             ShellTab.DIAGNOSTICS -> loadDiagnostics()
             ShellTab.SETTINGS -> loadSettings()
         }

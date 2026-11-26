@@ -4,6 +4,7 @@ package dev.gnacho.netgrip.presentation
 enum class ShellTab(val label: String) {
     PANEL("Panel"),
     CLIENTS("Clientes"),
+    TRAFFIC("Tráfico"),
     WIFI("WiFi"),
     REMOTE("Acceso remoto"),
     SNAPSHOTS("Copias"),

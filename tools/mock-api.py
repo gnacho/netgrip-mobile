@@ -130,6 +130,48 @@ BASE = {
     "/api/remoteaccess": {"applicable": True, "ping_wan": True,
                           "remote_https": False, "remote_ssh": False},
     "/api/clients/meta": {"meta": {}},
+    # Contabilidad del router (nlbwmon) y DPI (netifyd), tal como los sirve
+    # internal/server: writeJSON de ProbeNlbwmon, NlbwmonTopDevices y
+    # NetifydApps. Los bytes son contados, no tasas.
+    "/api/nlbwmon": {"installed": True, "running": True, "generations": 2,
+                     "commit_interval": 30, "prealloc_days": 7,
+                     "protocol_database": True},
+    "/api/nlbwmon/top": {
+        "devices": [
+            {"key": "aa:bb:cc:dd:ee:01", "ip": "192.168.1.50", "conns": 412,
+             "down_bytes": 8_214_364_160, "up_bytes": 512_000_000},
+            {"key": "aa:bb:cc:dd:ee:02", "ip": "192.168.1.60", "conns": 88,
+             "down_bytes": 2_147_483_648, "up_bytes": 96_468_992},
+            {"key": "aa:bb:cc:dd:ee:03", "conns": 12,
+             "down_bytes": 64_000_000, "up_bytes": 8_000_000},
+        ],
+        "apps": [
+            {"key": "HTTPS", "conns": 240, "down_bytes": 6_442_450_944, "up_bytes": 268_435_456},
+            {"key": "QUIC", "conns": 180, "down_bytes": 3_435_973_836, "up_bytes": 220_000_000},
+            {"key": "DNS", "conns": 96, "down_bytes": 12_582_912, "up_bytes": 6_291_456},
+            {"key": "other", "conns": 40, "down_bytes": 914_358_272, "up_bytes": 121_634_816},
+        ],
+    },
+    "/api/dpi": {
+        "applicable": True, "total_bytes": 9_663_676_416, "total_flows": 892,
+        "protocols": [
+            {"name": "HTTPS", "bytes": 6_442_450_944, "flows": 402, "category": "web"},
+            {"name": "QUIC", "bytes": 3_221_225_472, "flows": 490, "category": "web"},
+        ],
+    },
+    "/api/dpi/apps": {"apps": [
+        {"name": "YouTube", "category": "streaming", "bytes": 4_294_967_296,
+         "local_bytes": 1_073_741_824, "other_bytes": 3_221_225_472,
+         "packets": 3_210_000, "flows": 210},
+        {"name": "Spotify", "category": "streaming", "bytes": 805_306_368,
+         "local_bytes": 268_435_456, "other_bytes": 536_870_912,
+         "packets": 610_000, "flows": 88},
+        {"name": "GitHub", "category": "business", "bytes": 134_217_728,
+         "local_bytes": 33_554_432, "other_bytes": 100_663_296,
+         "packets": 120_000, "flows": 34},
+        {"name": "Algo-que-netifyd-no-sabe", "category": "", "bytes": 33_554_432,
+         "local_bytes": 0, "other_bytes": 33_554_432, "packets": 40_000, "flows": 6},
+    ]},
 }
 
 
@@ -163,6 +205,31 @@ class Handler(BaseHTTPRequestHandler):
             return json.loads(raw.decode())
         except ValueError:
             return {}
+
+    def _traffic_timeline(self):
+        """Cubos de 5 minutos de las ultimas horas, como los agrega netifyd."""
+        bucket = now() // 300 * 300
+        names = ["YouTube", "Spotify", "GitHub"]
+        buckets = []
+        for index in range(12):
+            start = bucket - (11 - index) * 300
+            stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(start))
+            weights = [index % 5 + 1, (index * 3) % 4, index % 3]
+            entries = {}
+            for name, weight in zip(names, weights):
+                size = weight * 12_000_000
+                entries[name] = {
+                    "local": size // 3,
+                    "other": size - size // 3,
+                    "total": size,
+                }
+            buckets.append({"time": stamp, "apps": entries})
+        total = sum(entry["total"] for b in buckets for entry in b["apps"].values())
+        return {
+            "buckets": buckets,
+            "top": BASE["/api/dpi/apps"]["apps"],
+            "totals": {"local": total // 4, "other": total - total // 4, "total": total},
+        }
 
     def do_GET(self):
         path = self.path.split("?", 1)[0]
@@ -228,6 +295,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/selfupdate/status":
             self._send(200, {"phase": "idle", "progress": 0})
+            return
+        if path == "/api/dpi/timeline":
+            self._send(200, self._traffic_timeline())
             return
         if path in BASE:
             self._send(200, BASE[path])
