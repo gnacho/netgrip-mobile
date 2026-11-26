@@ -46,10 +46,13 @@ import dev.gnacho.netgrip.data.dto.BoardDto
 import dev.gnacho.netgrip.data.dto.MdnsDto
 import dev.gnacho.netgrip.data.dto.ModeDto
 import dev.gnacho.netgrip.data.dto.SelfUpdateDto
+import dev.gnacho.netgrip.data.dto.SelfUpdateScheduleDto
+import dev.gnacho.netgrip.domain.format.Formats
 import dev.gnacho.netgrip.data.dto.UpdateCheckDto
 import dev.gnacho.netgrip.presentation.SettingsState
 import dev.gnacho.netgrip.presentation.ShellViewModel
 import dev.gnacho.netgrip.ui.common.Banner
+import dev.gnacho.netgrip.ui.common.CardDivider
 import dev.gnacho.netgrip.ui.common.ErrorBox
 import dev.gnacho.netgrip.ui.common.IconTile
 import dev.gnacho.netgrip.ui.common.InfoRow
@@ -58,10 +61,13 @@ import dev.gnacho.netgrip.ui.common.LoadingBox
 import dev.gnacho.netgrip.ui.common.NetGripCard
 import dev.gnacho.netgrip.ui.common.NetGripIcons
 import dev.gnacho.netgrip.ui.common.Pill
+import dev.gnacho.netgrip.ui.common.ToggleRow
 import dev.gnacho.netgrip.ui.common.SegmentedControl
 import dev.gnacho.netgrip.ui.common.Tone
 import dev.gnacho.netgrip.ui.theme.MonoStyle
+import dev.gnacho.netgrip.ui.theme.MonoStyle
 import dev.gnacho.netgrip.ui.theme.ThemeMode
+import dev.gnacho.netgrip.ui.theme.netGrip
 
 @Composable
 fun SettingsScreen(
@@ -118,7 +124,16 @@ fun SettingsScreen(
                 }
             }
             item { FirmwareCard(state.firmware, state.actionBusy) { viewModel.installFirmware() } }
-            item { UpdateCard(state.selfUpdate, state.actionBusy) { viewModel.updateNetGrip() } }
+            item {
+                UpdateCard(
+                    update = state.selfUpdate,
+                    busy = state.actionBusy,
+                    schedule = state.selfUpdateSchedule,
+                    scheduleSaving = state.scheduleSaving,
+                    onUpdate = viewModel::updateNetGrip,
+                    onSchedule = viewModel::saveSelfUpdateSchedule,
+                )
+            }
             item {
                 SystemActionsCard(
                     state = state,
@@ -272,7 +287,14 @@ private fun MdnsCard(mdns: MdnsDto?) {
 }
 
 @Composable
-private fun UpdateCard(update: SelfUpdateDto?, busy: Boolean, onUpdate: () -> Unit) {
+private fun UpdateCard(
+    update: SelfUpdateDto?,
+    busy: Boolean,
+    schedule: SelfUpdateScheduleDto?,
+    scheduleSaving: Boolean,
+    onUpdate: () -> Unit,
+    onSchedule: (Boolean?, Int?, Int?, Int?) -> Unit,
+) {
     var confirmOpen by remember { mutableStateOf(false) }
     NetGripCard(
         eyebrow = "Sistema",
@@ -326,6 +348,48 @@ private fun UpdateCard(update: SelfUpdateDto?, busy: Boolean, onUpdate: () -> Un
                 Text("Actualizar NetGrip")
             }
         }
+        schedule?.let { sched ->
+            Spacer(Modifier.size(12.dp))
+            CardDivider()
+            Spacer(Modifier.size(10.dp))
+            Text(
+                "PROGRAMAR",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.netGrip.faint,
+            )
+            Spacer(Modifier.size(6.dp))
+            ToggleRow(
+                title = "Actualizar el panel solo",
+                subtitle = "Busca versiones y aplica la que haya dentro de la franja elegida.",
+                checked = sched.config.enabled,
+                enabled = !scheduleSaving,
+                onChange = { onSchedule(it, null, null, null) },
+            )
+            if (sched.config.enabled) {
+                Spacer(Modifier.size(8.dp))
+                SegmentedControl(
+                    options = listOf(24 to "Cada día", 168 to "Cada semana"),
+                    selected = if (sched.config.intervalHours <= 24) 24 else 168,
+                    onSelect = { onSchedule(null, it, null, null) },
+                )
+                Spacer(Modifier.size(8.dp))
+                WindowRow(
+                    start = sched.config.windowStart,
+                    end = sched.config.windowEnd,
+                    enabled = !scheduleSaving,
+                    onChange = { start -> onSchedule(null, null, start, if (start + 2 <= 24) start + 2 else start + 2 - 24) },
+                )
+                sched.state.lastResult.takeIf { it.isNotBlank() }?.let { result ->
+                    Spacer(Modifier.size(8.dp))
+                    Text(
+                        "Última comprobación: $result" +
+                            Formats.clock(sched.state.lastCheck).takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
     }
 
     if (confirmOpen) {
@@ -350,6 +414,37 @@ private fun UpdateCard(update: SelfUpdateDto?, busy: Boolean, onUpdate: () -> Un
             },
             dismissButton = { TextButton(onClick = { confirmOpen = false }) { Text("Cancelar") } },
         )
+    }
+}
+
+/** Franja horaria de la ventana de actualización (hora local). */
+@Composable
+private fun WindowRow(start: Int, end: Int, enabled: Boolean, onChange: (Int) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text("Franja", style = MaterialTheme.typography.bodyMedium)
+            Text(
+                "${start.toString().padStart(2, '0')}:00 a ${end.toString().padStart(2, '0')}:00",
+                style = MonoStyle,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        OutlinedButton(
+            onClick = { onChange(if (start == 0) 23 else start - 1) },
+            enabled = enabled,
+            shape = RoundedCornerShape(10.dp),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+        ) { Text("-") }
+        OutlinedButton(
+            onClick = { onChange(if (start == 23) 0 else start + 1) },
+            enabled = enabled,
+            shape = RoundedCornerShape(10.dp),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+        ) { Text("+") }
     }
 }
 

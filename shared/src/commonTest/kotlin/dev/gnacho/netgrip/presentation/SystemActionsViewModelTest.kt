@@ -109,6 +109,21 @@ class SystemActionsViewModelTest {
         assertFalse(viewModel.settings.value.selfUpdateRunning)
     }
 
+    @Test
+    fun laProgramacionDelPanelEnviaSoloLoQueCambia() = runSystemTest(schedule = true) { probe, viewModel ->
+        viewModel.loadSettings()
+        probe.pumpUntilIdle()
+
+        viewModel.saveSelfUpdateSchedule(intervalHours = 24, windowStart = 4, windowEnd = 6)
+        probe.pumpUntilIdle()
+
+        val put = probe.calls.first { it.path == "/api/selfupdate/schedule" && it.method == "PUT" }
+        assertEquals("""{"intervalHours":24,"windowStart":4,"windowEnd":6}""", put.body)
+        assertEquals("Programación guardada", viewModel.settings.value.actionMessage)
+        assertFalse(viewModel.settings.value.scheduleSaving)
+        assertEquals(24, viewModel.settings.value.selfUpdateSchedule?.config?.intervalHours)
+    }
+
     // ── helpers ────────────────────────────────────────────────────────────
 
     private class Call(val path: String, val method: String, val body: String)
@@ -132,6 +147,7 @@ class SystemActionsViewModelTest {
         passwordError: String = "",
         firmware: Boolean = false,
         selfUpdate: Boolean = false,
+        schedule: Boolean = false,
         block: suspend TestScope.(Probe, ShellViewModel) -> Unit,
     ) = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
@@ -139,6 +155,7 @@ class SystemActionsViewModelTest {
             val probe = Probe(this)
             var meCount = 0
             var started = false
+            var scheduleInterval = 168
             val config = MockEngineConfig()
             config.dispatcher = StandardTestDispatcher(testScheduler)
             config.addHandler { request: HttpRequestData ->
@@ -173,6 +190,22 @@ class SystemActionsViewModelTest {
                         respond("""{"phase":"restarting","progress":100}""", HttpStatusCode.OK, json)
                     }
                     path == "/api/update" -> respond("{}", HttpStatusCode.OK, json)
+                    path == "/api/selfupdate/schedule" && method == "PUT" -> {
+                        if (body.contains("\"intervalHours\":24")) scheduleInterval = 24
+                        respond(
+                            """{"config":{"enabled":false,"intervalHours":$scheduleInterval,""" +
+                                """"windowStart":4,"windowEnd":6}}""",
+                            HttpStatusCode.OK,
+                            json,
+                        )
+                    }
+                    path == "/api/selfupdate/schedule" -> respond(
+                        """{"config":{"enabled":false,"intervalHours":$scheduleInterval,""" +
+                            """"windowStart":3,"windowEnd":5},
+                            "state":{"lastResult":"up-to-date","lastCheck":1000}}""",
+                        HttpStatusCode.OK,
+                        json,
+                    )
                     path == "/api/board" -> respond("{}", HttpStatusCode.OK, json)
                     path == "/api/mode" -> respond("{}", HttpStatusCode.OK, json)
                     path == "/api/access" -> respond("{}", HttpStatusCode.OK, json)

@@ -33,6 +33,8 @@ import dev.gnacho.netgrip.data.dto.PasswordChangeRequest
 import dev.gnacho.netgrip.data.dto.RebootResponseDto
 import dev.gnacho.netgrip.data.dto.ModeDto
 import dev.gnacho.netgrip.data.dto.SelfUpdateDto
+import dev.gnacho.netgrip.data.dto.SelfUpdateScheduleDto
+import dev.gnacho.netgrip.data.dto.SelfUpdateScheduleRequest
 import dev.gnacho.netgrip.data.dto.SelfUpdateStatusDto
 import dev.gnacho.netgrip.data.dto.SystemDto
 import dev.gnacho.netgrip.data.dto.UpdateCheckDto
@@ -61,6 +63,7 @@ import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
+import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.http.ContentType
@@ -334,6 +337,14 @@ class NetGripApi(
     suspend fun startSelfUpdate(): ApiResult<SelfUpdateStatusDto> =
         postJson("/api/selfupdate", EmptyRequest(confirm = true)) { json.decodeFromJsonElement(it) }
 
+    /** GET /api/selfupdate/schedule: programacion del panel. */
+    suspend fun selfUpdateSchedule(): ApiResult<SelfUpdateScheduleDto> =
+        getData("/api/selfupdate/schedule") { json.decodeFromJsonElement(it) }
+
+    /** PUT /api/selfupdate/schedule: solo los campos que cambian. */
+    suspend fun setSelfUpdateSchedule(req: SelfUpdateScheduleRequest): ApiResult<SelfUpdateScheduleDto> =
+        putJson("/api/selfupdate/schedule", req) { json.decodeFromJsonElement(it) }
+
     /** GET /api/wifischedule: horario de cada interfaz WiFi. */
     suspend fun wifiSchedules(): ApiResult<WifiSchedulesDto> =
         getData("/api/wifischedule") { json.decodeFromJsonElement(it) }
@@ -397,6 +408,25 @@ class NetGripApi(
                     socketTimeoutMillis = LONG_WRITE_TIMEOUT_MILLIS
                 }
             }
+            setBody(body)
+        }
+        when (response.status) {
+            HttpStatusCode.OK -> ApiResult.Ok(decode(response.body<JsonElement>()))
+            HttpStatusCode.Unauthorized -> ApiResult.Unauthorized
+            HttpStatusCode.TooManyRequests -> ApiResult.RateLimited(retryAfter(response))
+            else -> ApiResult.HttpError(response.status.value, errorMessage(response))
+        }
+    }
+
+    /** PUT con cuerpo JSON y el mismo envelope de error que [postJson]. */
+    private suspend inline fun <reified B, reified T> putJson(
+        path: String,
+        body: B,
+        crossinline decode: (JsonElement) -> T,
+    ): ApiResult<T> = safeCall {
+        val response = client.put("$baseUrl$path") {
+            contentType(ContentType.Application.Json)
+            sessionHeader()
             setBody(body)
         }
         when (response.status) {
