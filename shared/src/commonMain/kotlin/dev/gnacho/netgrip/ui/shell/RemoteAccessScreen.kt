@@ -177,7 +177,7 @@ private fun TailscaleCard(
         }
         if (!tailscale.installed) {
             Text(
-                "Instala el paquete Tailscale en el router desde LuCI o la consola. " +
+                "Instala el paquete Tailscale en el router desde la consola. " +
                     "Después podrás encenderlo aquí.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -253,7 +253,7 @@ private fun WireGuardCard(wireguard: WireGuardDto?) {
         }
         if (!wireguard.installed) {
             Text(
-                "WireGuard no está instalado. Se configura desde LuCI o la consola.",
+                "WireGuard no está instalado. Se configura desde la consola del router.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -311,7 +311,7 @@ private fun OpenVpnCard(openvpn: dev.gnacho.netgrip.data.dto.OpenVpnDto?) {
         }
         if (!openvpn.installed) {
             Text(
-                "OpenVPN no está instalado. Se configura desde LuCI o la consola.",
+                "OpenVPN no está instalado. Se configura desde la consola del router.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

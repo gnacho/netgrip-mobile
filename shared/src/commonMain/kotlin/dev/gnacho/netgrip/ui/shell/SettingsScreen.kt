@@ -255,10 +255,10 @@ private fun AccessCard(access: AccessDto?) {
         InfoRow("Panel, HTTPS", yesNo(access.panel.httpsEnabled))
         InfoRow("Panel, forzar HTTPS", yesNo(access.panel.forceHttps))
         InfoRow("Duración de sesión", access.panel.sessionTtl.ifBlank { "Sin dato" })
-        InfoRow("LuCI", if (access.luci.enabled) "Activo" else "Apagado")
-        if (access.luci.enabled) {
-            InfoRow("LuCI, puertos", "${access.luci.httpPort} / ${access.luci.httpsPort}", mono = true)
-            InfoRow("LuCI, forzar HTTPS", yesNo(access.luci.forceHttps))
+        InfoRow("Panel web", if (access.web.enabled) "Activo" else "Apagado")
+        if (access.web.enabled) {
+            InfoRow("Panel web, puertos", "${access.web.httpPort} / ${access.web.httpsPort}", mono = true)
+            InfoRow("Panel web, forzar HTTPS", yesNo(access.web.forceHttps))
         }
         InfoRow("SSH", if (access.ssh.enabled) "Activo, puerto ${access.ssh.port}" else "Apagado")
     }
@@ -485,7 +485,7 @@ private fun FirmwareCard(
     ) {
         if (firmware == null) {
             Text(
-                "No se pudo leer el estado del firmware. Puede que este router no tenga owut: en ese caso se actualiza desde LuCI.",
+                "No se pudo leer el estado del firmware. Puede que este router no tenga owut: en ese caso se actualiza desde la consola del router.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -493,7 +493,7 @@ private fun FirmwareCard(
         }
         if (!firmware.owutPresent) {
             Text(
-                "owut no está instalado, así que el router no puede actualizarse desde aquí. Usa LuCI o la consola.",
+                "owut no está instalado, así que el router no puede actualizarse desde aquí. Usa la consola del router.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

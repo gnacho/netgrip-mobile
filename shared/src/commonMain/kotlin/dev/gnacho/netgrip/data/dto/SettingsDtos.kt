@@ -3,11 +3,12 @@ package dev.gnacho.netgrip.data.dto
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-/** GET /api/access: puertos y exposicion de panel, LuCI y SSH. */
+/** GET /api/access: puertos y exposicion de panel, panel web del router y SSH. */
 @Serializable
 data class AccessDto(
     val panel: PanelAccessDto = PanelAccessDto(),
-    val luci: LuciAccessDto = LuciAccessDto(),
+    // El nombre del campo en la API conserva el nombre antiguo por compatibilidad.
+    @SerialName("luci") val web: WebAccessDto = WebAccessDto(),
     val ssh: SshAccessDto = SshAccessDto(),
 )
 
@@ -20,7 +21,7 @@ data class PanelAccessDto(
 )
 
 @Serializable
-data class LuciAccessDto(
+data class WebAccessDto(
     @SerialName("http_port") val httpPort: Int = 0,
     @SerialName("https_port") val httpsPort: Int = 0,
     @SerialName("force_https") val forceHttps: Boolean = false,
