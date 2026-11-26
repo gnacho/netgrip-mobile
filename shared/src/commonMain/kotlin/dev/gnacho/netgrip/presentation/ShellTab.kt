@@ -7,6 +7,7 @@ enum class ShellTab(val label: String) {
     TRAFFIC("Tráfico"),
     WIFI("WiFi"),
     REMOTE("Acceso remoto"),
+    FLEET("Flota"),
     SNAPSHOTS("Copias"),
     PORTS("Puertos"),
     DIAGNOSTICS("Diagnóstico"),

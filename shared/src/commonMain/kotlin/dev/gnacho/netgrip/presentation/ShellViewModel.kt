@@ -17,6 +17,9 @@ import dev.gnacho.netgrip.data.dto.DdnsDto
 import dev.gnacho.netgrip.data.dto.DpiAppDto
 import dev.gnacho.netgrip.data.dto.DpiProbeDto
 import dev.gnacho.netgrip.data.dto.DpiTimelineDto
+import dev.gnacho.netgrip.data.dto.DiscoveredPeerDto
+import dev.gnacho.netgrip.data.dto.FleetAdoptRequest
+import dev.gnacho.netgrip.data.dto.FleetNodeDto
 import dev.gnacho.netgrip.data.dto.NlbwUsageDto
 import dev.gnacho.netgrip.data.dto.NlbwmonProbeDto
 import dev.gnacho.netgrip.data.dto.NftQoSProbeDto
@@ -64,6 +67,7 @@ import dev.gnacho.netgrip.domain.clients.ClientReservationRules
 import dev.gnacho.netgrip.domain.clients.ClientWriteCheck
 import dev.gnacho.netgrip.domain.clients.MacAddress
 import dev.gnacho.netgrip.domain.clients.ReservationAction
+import dev.gnacho.netgrip.domain.fleet.FleetRules
 import dev.gnacho.netgrip.domain.format.nowEpochSeconds
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -215,6 +219,28 @@ data class PoliciesState(
     val actionError: String? = null,
 )
 
+/**
+ * Estado de la pestana Flota: los routers que el panel gestiona juntos, su
+ * ultimo estado conocido, los peers que se anuncian en la LAN y el
+ * descubrimiento. Nada de aqui sondea routers desde el telefono.
+ */
+data class FleetState(
+    val loading: Boolean = false,
+    val loaded: Boolean = false,
+    val error: String? = null,
+    val nodes: List<FleetNodeDto> = emptyList(),
+    /** Router cuya comprobacion esta en curso. */
+    val checkingId: String? = null,
+    val checkingAll: Boolean = false,
+    /** Peers anunciados que aun no estan en la flota. */
+    val discovered: List<DiscoveredPeerDto> = emptyList(),
+    val discoveryEnabled: Boolean = false,
+    /** Peer que se esta adoptando. */
+    val adopting: String? = null,
+    val actionMessage: String? = null,
+    val actionError: String? = null,
+)
+
 /** Estado de la pestana Diagnostico. */
 data class DiagnosticsState(
     val loading: Boolean = false,
@@ -307,6 +333,9 @@ class ShellViewModel(
     private val _policies = MutableStateFlow(PoliciesState())
     val policies: StateFlow<PoliciesState> = _policies.asStateFlow()
 
+    private val _fleet = MutableStateFlow(FleetState())
+    val fleet: StateFlow<FleetState> = _fleet.asStateFlow()
+
     private val _sessionExpired = MutableStateFlow(false)
     val sessionExpired: StateFlow<Boolean> = _sessionExpired.asStateFlow()
 
@@ -323,6 +352,7 @@ class ShellViewModel(
     private var diagnosticsJob: Job? = null
     private var trafficJob: Job? = null
     private var policiesJob: Job? = null
+    private var fleetJob: Job? = null
     private var settingsJob: Job? = null
     private var confirmJob: Job? = null
 
@@ -1110,6 +1140,155 @@ class ShellViewModel(
         _policies.value = next
     }
 
+    fun ensureFleet() {
+        if (_fleet.value.loaded || fleetJob?.isActive == true) return
+        loadFleet()
+    }
+
+    /** GET /api/fleet, los peers anunciados y el interruptor de descubrimiento. */
+    fun loadFleet() {
+        if (fleetJob?.isActive == true) return
+        fleetJob = viewModelScope.launch {
+            _fleet.update { it.copy(loading = true, error = null) }
+            var next = _fleet.value.copy(loading = false, loaded = true)
+            var failure: String? = null
+            fun fail(result: ApiResult<*>) {
+                if (result == ApiResult.Unauthorized) _sessionExpired.value = true
+                failure = failure ?: describe(result)
+            }
+            coroutineScope {
+                val fleet = async { api.fleet() }
+                val peers = async { api.fleetDiscovered() }
+                val discovery = async { api.fleetDiscoveryConfig() }
+                when (val result = fleet.await()) {
+                    is ApiResult.Ok -> next = next.copy(nodes = sortedFleet(result.value.nodes))
+                    else -> fail(result)
+                }
+                when (val result = peers.await()) {
+                    is ApiResult.Ok -> next = next.copy(discovered = result.value.peers)
+                    else -> fail(result)
+                }
+                when (val result = discovery.await()) {
+                    is ApiResult.Ok -> next = next.copy(discoveryEnabled = result.value.enabled)
+                    else -> fail(result)
+                }
+            }
+            _fleet.value = next.copy(error = failure)
+        }
+    }
+
+    /** POST /api/fleet/check: version y alcance frescos de un router. */
+    fun checkFleetNode(id: String) {
+        val state = _fleet.value
+        if (state.checkingId != null || state.checkingAll) return
+        viewModelScope.launch {
+            _fleet.update { it.copy(checkingId = id, actionMessage = null, actionError = null) }
+            when (val result = api.fleetCheck(id)) {
+                is ApiResult.Ok -> _fleet.update {
+                    it.copy(
+                        checkingId = null,
+                        nodes = replaceFleetNode(it.nodes, result.value),
+                        actionMessage = checkSummary(result.value),
+                    )
+                }
+                else -> _fleet.update { it.copy(checkingId = null, actionError = failWith(result)) }
+            }
+        }
+    }
+
+    /** POST /api/fleet/check-all: el panel los comprueba todos en paralelo. */
+    fun checkAllFleet() {
+        val state = _fleet.value
+        if (state.checkingAll || state.checkingId != null) return
+        viewModelScope.launch {
+            _fleet.update { it.copy(checkingAll = true, actionMessage = null, actionError = null) }
+            when (val result = api.fleetCheckAll()) {
+                is ApiResult.Ok -> {
+                    val nodes = sortedFleet(result.value.nodes)
+                    val summary = FleetRules.summary(nodes)
+                    _fleet.update {
+                        it.copy(
+                            checkingAll = false,
+                            nodes = nodes,
+                            actionMessage = when {
+                                nodes.isEmpty() -> "La flota está vacía"
+                                summary.updates > 0 -> "${summary.updates} con actualización disponible"
+                                else -> "Todo al día · ${summary.reachable} de ${summary.total} responden"
+                            },
+                        )
+                    }
+                }
+                else -> _fleet.update { it.copy(checkingAll = false, actionError = failWith(result)) }
+            }
+        }
+    }
+
+    /** POST /api/fleet/discovery-config. */
+    fun setFleetDiscovery(enabled: Boolean) {
+        viewModelScope.launch {
+            _fleet.update { it.copy(actionMessage = null, actionError = null) }
+            when (val result = api.setFleetDiscoveryConfig(enabled)) {
+                is ApiResult.Ok -> _fleet.update {
+                    it.copy(
+                        discoveryEnabled = result.value.enabled,
+                        actionMessage = if (result.value.enabled) {
+                            "Descubrimiento encendido"
+                        } else {
+                            "Descubrimiento apagado"
+                        },
+                    )
+                }
+                else -> _fleet.update { it.copy(actionError = failWith(result)) }
+            }
+        }
+    }
+
+    /**
+     * POST /api/fleet/adopt. El panel verifica las credenciales contra el peer
+     * antes de guardarlo; si no entran, el error es suyo y se muestra tal cual.
+     */
+    fun adoptFleetPeer(peer: DiscoveredPeerDto, name: String, password: String) {
+        if (_fleet.value.adopting != null) return
+        val cleanName = name.trim()
+        val address = FleetRules.hostPort(peer.address, peer.port)
+        viewModelScope.launch {
+            _fleet.update { it.copy(adopting = peer.id, actionMessage = null, actionError = null) }
+            val request = FleetAdoptRequest(peer.id, cleanName, address, password)
+            when (val result = api.fleetAdopt(request)) {
+                is ApiResult.Ok -> {
+                    _fleet.update {
+                        it.copy(
+                            adopting = null,
+                            actionMessage = "$cleanName añadido a la flota",
+                        )
+                    }
+                    loadFleet()
+                }
+                else -> _fleet.update { it.copy(adopting = null, actionError = failWith(result)) }
+            }
+        }
+    }
+
+    fun clearFleetFeedback() {
+        _fleet.update { it.copy(actionMessage = null, actionError = null) }
+    }
+
+    private fun sortedFleet(nodes: List<FleetNodeDto>): List<FleetNodeDto> =
+        nodes.sortedBy { it.name.lowercase().ifBlank { it.address.lowercase() } }
+
+    private fun replaceFleetNode(nodes: List<FleetNodeDto>, updated: FleetNodeDto): List<FleetNodeDto> =
+        nodes.map { if (it.id == updated.id) updated else it }
+
+    private fun checkSummary(node: FleetNodeDto): String {
+        val name = node.name.ifBlank { node.id }
+        return when {
+            !node.reachable -> "$name no responde"
+            node.updateAvailable -> "$name puede pasar a ${node.latestVersion}"
+            node.currentVersion.isNotBlank() -> "$name está en la ${node.currentVersion}"
+            else -> "$name responde"
+        }
+    }
+
     fun ensureSnapshots() {
         if (_snapshots.value.loaded || snapshotsJob?.isActive == true) return
         loadSnapshots()
@@ -1732,6 +1911,7 @@ class ShellViewModel(
                 loadTraffic()
                 if (_policies.value.loaded) loadPolicies()
             }
+            ShellTab.FLEET -> loadFleet()
             ShellTab.DIAGNOSTICS -> loadDiagnostics()
             ShellTab.SETTINGS -> loadSettings()
         }
