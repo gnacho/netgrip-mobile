@@ -7,8 +7,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class AccessDto(
     val panel: PanelAccessDto = PanelAccessDto(),
-    // El nombre del campo en la API conserva el nombre antiguo por compatibilidad.
-    @SerialName("luci") val web: WebAccessDto = WebAccessDto(),
+    val web: WebAccessDto = WebAccessDto(),
     val ssh: SshAccessDto = SshAccessDto(),
 )
 

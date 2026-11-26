@@ -195,7 +195,7 @@ class NetGripDtoParsingTest {
     fun accessLeePanelLuciYSsh() {
         val body = """
             {"panel":{"http_port":8090,"https_enabled":true,"force_https":false,"session_ttl":"60m"},
-             "luci":{"http_port":80,"https_port":443,"force_https":false,"enabled":true},
+             "web":{"http_port":80,"https_port":443,"force_https":false,"enabled":true},
              "ssh":{"enabled":true,"port":"22"}}
         """.trimIndent()
         val access = json.decodeFromJsonElement<AccessDto>(json.parseToJsonElement(body))
