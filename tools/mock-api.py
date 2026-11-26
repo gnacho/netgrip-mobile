@@ -57,6 +57,7 @@ ESTADO = {
     ],
     "confirm": None,
     "snapshot": None,
+    "password_changed": False,
     "guest": {"gateway": True, "active": True, "ssid": "Invitados",
               "subnet": "192.168.9.1", "isolate": True,
               "ifaces": ["phy0-ap1"], "clients": 1, "gl_conflict": False},
@@ -134,7 +135,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?", 1)[0]
         if path == "/api/me":
-            self._send(204)
+            if ESTADO["password_changed"]:
+                self._send(401, {"error": "unauthorized"})
+            else:
+                self._send(204)
             return
         if path == "/api/wifi":
             self._wipe_expired()
@@ -206,6 +210,21 @@ class Handler(BaseHTTPRequestHandler):
                 if "txpower" in body:
                     radio["txpower"] = int(body["txpower"])
             self._risky({"status": "applied", "rolled_back": False, "state": ESTADO["radios"][0]})
+            return
+        if path == "/api/reboot":
+            self._send(200, {"started": True})
+            return
+        if path == "/api/password":
+            current = body.get("current", "")
+            new = body.get("next", "")
+            if current != "demo":
+                self._send(400, {"error": "current password is wrong"})
+                return
+            if len(new) < 8:
+                self._send(400, {"error": "password must be at least 8 characters"})
+                return
+            ESTADO["password_changed"] = True
+            self._send(204)
             return
         if path == "/api/wifischedule":
             for entry in ESTADO["schedules"]:

@@ -1,6 +1,7 @@
 package dev.gnacho.netgrip.ui.shell
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -12,24 +13,42 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import dev.gnacho.netgrip.data.dto.AccessDto
 import dev.gnacho.netgrip.data.dto.BoardDto
 import dev.gnacho.netgrip.data.dto.MdnsDto
 import dev.gnacho.netgrip.data.dto.ModeDto
 import dev.gnacho.netgrip.data.dto.SelfUpdateDto
+import dev.gnacho.netgrip.presentation.SettingsState
 import dev.gnacho.netgrip.presentation.ShellViewModel
 import dev.gnacho.netgrip.ui.common.Banner
 import dev.gnacho.netgrip.ui.common.ErrorBox
+import dev.gnacho.netgrip.ui.common.IconTile
 import dev.gnacho.netgrip.ui.common.InfoRow
 import dev.gnacho.netgrip.ui.common.InlineWarning
 import dev.gnacho.netgrip.ui.common.LoadingBox
@@ -50,13 +69,25 @@ fun SettingsScreen(
     onThemeModeChange: (ThemeMode) -> Unit = {},
 ) {
     val state by viewModel.settings.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(Unit) { viewModel.ensureSettings() }
+
+    // Los errores se pintan en su tarjeta o en su dialogo, donde el usuario
+    // puede corregirlos: el snackbar solo confirma acciones.
+    val feedback = state.actionMessage
+    LaunchedEffect(feedback) {
+        if (feedback != null) {
+            snackbarHostState.showSnackbar(feedback)
+            viewModel.clearSettingsFeedback()
+        }
+    }
 
     when {
         state.loading && !state.loaded -> LoadingBox()
         state.error != null && state.board == null && state.access == null ->
             ErrorBox(state.error!!) { viewModel.loadSettings() }
-        else -> LazyColumn(
+        else -> Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -75,7 +106,20 @@ fun SettingsScreen(
             item { AccessCard(state.access) }
             item { MdnsCard(state.mdns) }
             item { UpdateCard(state.selfUpdate) }
+            item {
+                SystemActionsCard(
+                    state = state,
+                    onReboot = viewModel::rebootRouter,
+                    onChangePassword = viewModel::changePassword,
+                    onClearFeedback = viewModel::clearSettingsFeedback,
+                )
+            }
             item { ConnectionCard(baseUrl, onLogout) }
+        }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
+        )
         }
     }
 }
@@ -287,3 +331,195 @@ private fun ConnectionCard(baseUrl: String?, onLogout: () -> Unit) {
 }
 
 private fun yesNo(value: Boolean): String = if (value) "Sí" else "No"
+
+/**
+ * Reinicio del router y cambio de la contrasena de administracion. Las dos son
+ * acciones que cortan la conexion, asi que piden confirmacion explicita y
+ * explican lo que va a pasar.
+ */
+@Composable
+private fun SystemActionsCard(
+    state: SettingsState,
+    onReboot: () -> Unit,
+    onChangePassword: (String, String) -> Unit,
+    onClearFeedback: () -> Unit,
+) {
+    var confirmReboot by remember { mutableStateOf(false) }
+    var passwordOpen by remember { mutableStateOf(false) }
+
+    NetGripCard(
+        eyebrow = "Sistema",
+        title = "Reinicio y contraseña",
+        subtitle = "Acciones que cortan la sesión",
+        icon = NetGripIcons.Warning,
+        iconTone = Tone.DANGER,
+    ) {
+        if (state.rebooting) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                Text(
+                    "Reiniciando. La app espera a que el router vuelva.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            return@NetGripCard
+        }
+
+        OutlinedButton(
+            onClick = { confirmReboot = true },
+            enabled = !state.actionBusy,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+        ) {
+            Icon(NetGripIcons.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Reiniciar el router")
+        }
+        Spacer(Modifier.size(8.dp))
+        OutlinedButton(
+            onClick = {
+                onClearFeedback()
+                passwordOpen = true
+            },
+            enabled = !state.actionBusy,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+        ) {
+            Icon(NetGripIcons.Settings, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Cambiar la contraseña")
+        }
+        Spacer(Modifier.size(10.dp))
+        Text(
+            "Cambiar la contraseña cierra todas las sesiones del panel, también esta.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        val cardError = state.actionError
+        if (cardError != null && !passwordOpen) {
+            Spacer(Modifier.size(8.dp))
+            InlineWarning(cardError)
+        }
+    }
+
+    if (confirmReboot) {
+        AlertDialog(
+            onDismissRequest = { confirmReboot = false },
+            icon = { IconTile(NetGripIcons.Warning, Tone.DANGER) },
+            title = { Text("Reiniciar el router") },
+            text = {
+                Text(
+                    "El router dejará de responder uno o dos minutos y se cortará Internet " +
+                        "mientras arranca. La app esperará a que vuelva y, si la sesión no " +
+                        "sobrevive, te pedirá entrar de nuevo.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        confirmReboot = false
+                        onReboot()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError,
+                    ),
+                ) { Text("Reiniciar") }
+            },
+            dismissButton = { TextButton(onClick = { confirmReboot = false }) { Text("Cancelar") } },
+        )
+    }
+
+    if (passwordOpen) {
+        PasswordDialog(
+            busy = state.actionBusy,
+            error = state.actionError,
+            onDismiss = { passwordOpen = false },
+            onApply = onChangePassword,
+        )
+    }
+}
+
+@Composable
+private fun PasswordDialog(
+    busy: Boolean,
+    error: String?,
+    onDismiss: () -> Unit,
+    onApply: (String, String) -> Unit,
+) {
+    var current by remember { mutableStateOf("") }
+    var next by remember { mutableStateOf("") }
+    var repeat by remember { mutableStateOf("") }
+    var show by remember { mutableStateOf(false) }
+
+    val localError = when {
+        next.isNotEmpty() && next.length < 8 -> "La nueva contraseña necesita al menos 8 caracteres"
+        repeat.isNotEmpty() && next != repeat -> "Las dos contraseñas no coinciden"
+        else -> null
+    }
+    val canSave = !busy && current.isNotEmpty() && next.length >= 8 && next == repeat
+    val shownError = localError ?: error
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { IconTile(NetGripIcons.Settings, Tone.WARN) },
+        title = { Text("Cambiar la contraseña") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Se cambiará la contraseña de administración del router y se cerrarán todas " +
+                        "las sesiones del panel. Tendrás que entrar otra vez con la nueva.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                OutlinedTextField(
+                    value = current,
+                    onValueChange = { current = it },
+                    label = { Text("Contraseña actual") },
+                    singleLine = true,
+                    visualTransformation = if (show) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = next,
+                    onValueChange = { next = it },
+                    label = { Text("Nueva contraseña") },
+                    singleLine = true,
+                    visualTransformation = if (show) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = repeat,
+                    onValueChange = { repeat = it },
+                    label = { Text("Repite la nueva") },
+                    singleLine = true,
+                    visualTransformation = if (show) VisualTransformation.None else PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    isError = shownError != null,
+                    supportingText = shownError?.let { { Text(it) } },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                TextButton(onClick = { show = !show }) {
+                    Text(if (show) "Ocultar las contraseñas" else "Mostrar las contraseñas")
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onApply(current, next) }, enabled = canSave) {
+                if (busy) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                } else {
+                    Text("Cambiar")
+                }
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
+    )
+}

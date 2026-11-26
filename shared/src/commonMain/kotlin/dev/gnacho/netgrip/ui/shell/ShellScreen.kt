@@ -102,6 +102,7 @@ fun ShellScreen(
     var tab by remember { mutableStateOf(ShellTab.PANEL) }
     val panel by viewModel.panel.collectAsState()
     val sessionExpired by viewModel.sessionExpired.collectAsState()
+    val passwordChanged by viewModel.passwordChanged.collectAsState()
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var showNetworks by remember { mutableStateOf(false) }
@@ -109,6 +110,10 @@ fun ShellScreen(
 
     LaunchedEffect(sessionExpired) {
         if (sessionExpired) sessionViewModel.onSessionExpired()
+    }
+
+    LaunchedEffect(passwordChanged) {
+        if (passwordChanged) sessionViewModel.onPasswordChanged()
     }
 
     val effectiveDark = when (themeMode) {

@@ -67,7 +67,7 @@ fun App(
 
     when {
         !sessionViewModel.sitesLoaded -> NetGripTheme(darkTheme = dark) { LoadingBox() }
-        sites.networks.isEmpty() && !loggedIn -> NetGripLoginTheme {
+        !loggedIn && (sites.networks.isEmpty() || sessionViewModel.forceLogin) -> NetGripLoginTheme {
             LoginScreen(
                 viewModel = sessionViewModel,
                 initialUrl = sessionViewModel.pendingLoginUrl,

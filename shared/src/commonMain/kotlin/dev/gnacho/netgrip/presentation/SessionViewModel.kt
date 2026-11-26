@@ -141,6 +141,7 @@ class SessionViewModel(
         if (uiState == UiState.Loading) return
         val cleanUrl = baseUrl.trim().trimEnd('/')
         pendingLogin = null
+        loginNotice = null
         uiState = UiState.Loading
         viewModelScope.launch {
             when (val result = endpointProbe.probe(cleanUrl)) {
@@ -201,6 +202,7 @@ class SessionViewModel(
                 baseUrl = request.baseUrl
                 sessionManager.onLoginOk(client, request.baseUrl, SiteRules.deviceId(request.baseUrl))
                 pendingLoginUrl = null
+                forceLogin = false
                 val device = SavedDevice(
                     id = SiteRules.deviceId(request.baseUrl),
                     url = SiteRules.normalizeUrl(request.baseUrl),
@@ -467,6 +469,11 @@ class SessionViewModel(
         }
     }
 
+    /** El aviso de contrasena se consume al entrar o al volver atras. */
+    fun consumeLoginNotice() {
+        loginNotice = null
+    }
+
     /**
      * Cierra la sesion del dispositivo actual. La cookie se revoca y se borra,
      * pero el dispositivo sigue en la lista. Si otra red o dispositivo tiene
@@ -506,6 +513,40 @@ class SessionViewModel(
             uiState = UiState.Idle
             pendingLoginUrl = device?.url
         }
+    }
+
+    /**
+     * La contrasena cambio en el router: todas las sesiones murieron. Se
+     * olvida la cookie local y se pide login con un aviso, sin llamar al
+     * router (la sesion ya no vale).
+     */
+    fun onPasswordChanged() {
+        val device = currentDevice
+        pendingLogin = null
+        viewModelScope.launch {
+            sessionManager.forgetSession(device?.id ?: SessionManager.DEFAULT_PROFILE)
+            api = null
+            baseUrl = null
+            uiState = UiState.Idle
+            pendingLoginUrl = device?.url
+            forceLogin = true
+            loginNotice = "Contraseña cambiada. Todas las sesiones se cerraron: entra con la nueva."
+        }
+    }
+
+    /** Aviso de un solo uso en la pantalla de acceso. */
+    var loginNotice by mutableStateOf<String?>(null)
+        private set
+
+    /**
+     * Hay que entrar de nuevo ahora mismo (por ejemplo tras cambiar la
+     * contrasena): la app muestra el login en vez de la lista de dispositivos.
+     */
+    var forceLogin by mutableStateOf(false)
+        private set
+
+    fun clearLoginNotice() {
+        loginNotice = null
     }
 
     /** Carga la lista guardada la primera vez que se necesita. */
