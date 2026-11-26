@@ -22,6 +22,8 @@ import dev.gnacho.netgrip.data.dto.SelfUpdateDto
 import dev.gnacho.netgrip.data.dto.LedDto
 import dev.gnacho.netgrip.data.dto.LogEntryDto
 import dev.gnacho.netgrip.data.dto.SystemDto
+import dev.gnacho.netgrip.data.dto.SelfUpdateScheduleDto
+import dev.gnacho.netgrip.data.dto.SelfUpdateScheduleRequest
 import dev.gnacho.netgrip.data.dto.UpdateCheckDto
 import dev.gnacho.netgrip.data.dto.WanDto
 import dev.gnacho.netgrip.data.dto.ConfirmWindowDto
@@ -143,6 +145,9 @@ data class SettingsState(
     val firmware: UpdateCheckDto? = null,
     val firmwareRunning: Boolean = false,
     val selfUpdateRunning: Boolean = false,
+    /** Programacion de la autoactualizacion del panel. */
+    val selfUpdateSchedule: SelfUpdateScheduleDto? = null,
+    val scheduleSaving: Boolean = false,
     /** Acciones de sistema en curso (reinicio, contrasena). */
     val actionBusy: Boolean = false,
     val actionMessage: String? = null,
@@ -780,6 +785,7 @@ class ShellViewModel(
                 val mdns = async { api.mdns() }
                 val update = async { api.selfUpdate() }
                 val firmware = async { api.updateCheck() }
+                val schedule = async { api.selfUpdateSchedule() }
                 merge(board.await()) { next = next.copy(board = it) }
                 merge(mode.await()) { next = next.copy(mode = it) }
                 merge(access.await()) { next = next.copy(access = it) }
@@ -789,6 +795,9 @@ class ShellViewModel(
                 // fallo de la pestana, la tarjeta lo explica.
                 (firmware.await() as? ApiResult.Ok)?.let { result ->
                     next = next.copy(firmware = result.value)
+                }
+                (schedule.await() as? ApiResult.Ok)?.let { result ->
+                    next = next.copy(selfUpdateSchedule = result.value)
                 }
             }
             _settings.value = next.copy(error = failure)
@@ -946,6 +955,42 @@ class ShellViewModel(
                 }
                 else -> _settings.update {
                     it.copy(actionBusy = false, selfUpdateRunning = false, actionError = failWith(result))
+                }
+            }
+        }
+    }
+
+    /**
+     * PUT /api/selfupdate/schedule. Se manda solo lo que cambia y se
+     * confirma con la relectura de la programacion.
+     */
+    fun saveSelfUpdateSchedule(
+        enabled: Boolean? = null,
+        intervalHours: Int? = null,
+        windowStart: Int? = null,
+        windowEnd: Int? = null,
+    ) {
+        if (_settings.value.scheduleSaving) return
+        viewModelScope.launch {
+            _settings.update { it.copy(scheduleSaving = true, actionMessage = null, actionError = null) }
+            when (val result = api.setSelfUpdateSchedule(
+                SelfUpdateScheduleRequest(enabled, intervalHours, windowStart, windowEnd),
+            )) {
+                is ApiResult.Ok -> {
+                    var next = _settings.value.copy(selfUpdateSchedule = result.value)
+                    when (val read = api.selfUpdateSchedule()) {
+                        is ApiResult.Ok -> next = next.copy(selfUpdateSchedule = read.value)
+                        else -> next = next.copy(actionError = "Programación guardada, pero no se pudo releer")
+                    }
+                    _settings.update {
+                        next.copy(
+                            scheduleSaving = false,
+                            actionMessage = if (next.actionError == null) "Programación guardada" else null,
+                        )
+                    }
+                }
+                else -> _settings.update {
+                    it.copy(scheduleSaving = false, actionError = failWith(result))
                 }
             }
         }

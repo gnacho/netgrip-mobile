@@ -59,6 +59,10 @@ ESTADO = {
     "snapshot": None,
     "password_changed": False,
     "firmware_started": False,
+    "schedule": {"config": {"enabled": False, "intervalHours": 168,
+                            "windowStart": 3, "windowEnd": 5},
+                 "state": {"lastCheck": 0, "lastResult": "", "lastApply": 0,
+                           "lastVersion": ""}},
     "selfupdate_started": False,
     "guest": {"gateway": True, "active": True, "ssid": "Invitados",
               "subnet": "192.168.9.1", "isolate": True,
@@ -179,6 +183,9 @@ class Handler(BaseHTTPRequestHandler):
                 "upgrade_started": ESTADO["firmware_started"],
             })
             return
+        if path == "/api/selfupdate/schedule":
+            self._send(200, ESTADO["schedule"])
+            return
         if path == "/api/selfupdate/status":
             self._send(200, {"phase": "idle", "progress": 0})
             return
@@ -231,6 +238,14 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/update":
             ESTADO["firmware_started"] = True
             self._send(200, {"started": True, "reboot_pending": True})
+            return
+        if path == "/api/selfupdate/schedule":
+            cfg = ESTADO["schedule"]["config"]
+            for key in ("enabled", "intervalHours", "windowStart", "windowEnd"):
+                if key in body:
+                    cfg[key] = body[key]
+            cfg["lastResult"] = "guardado"
+            self._send(200, ESTADO["schedule"])
             return
         if path == "/api/selfupdate":
             ESTADO["selfupdate_started"] = True
@@ -306,6 +321,19 @@ class Handler(BaseHTTPRequestHandler):
                 ESTADO["radios"] = snap
             ESTADO["snapshot"] = None
             self._send(200, {"status": "reverted"})
+            return
+        self._send(404, {"error": "not found"})
+
+    def do_PUT(self):
+        path = self.path.split("?", 1)[0]
+        body = self._json()
+        print(f"PUT {path} {body}", flush=True)
+        if path == "/api/selfupdate/schedule":
+            cfg = ESTADO["schedule"]["config"]
+            for key in ("enabled", "intervalHours", "windowStart", "windowEnd"):
+                if key in body:
+                    cfg[key] = body[key]
+            self._send(200, ESTADO["schedule"])
             return
         self._send(404, {"error": "not found"})
 

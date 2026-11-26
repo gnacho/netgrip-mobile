@@ -1,8 +1,7 @@
 # Router reboot and password
 
-Part of #21: the actions that cut the connection (reboot, password) and the two
-updates (router firmware, NetGrip panel). The NetGrip update schedule stays
-open.
+This covers #21: the actions that cut the connection (reboot, password), the
+two updates (router firmware, NetGrip panel) and the panel update schedule.
 
 ## Scope
 
@@ -12,6 +11,7 @@ open.
 | Change the admin password | `POST /api/password` | Confirmation with current, new and repeated password; afterwards the login with the new one |
 | Install router firmware | `GET|POST /api/update` | Version from and to, owut warnings, and an explicit acknowledgement before starting |
 | Update the NetGrip panel | `POST /api/selfupdate` | Confirmation naming the version; only the panel restarts |
+| Schedule the panel update | `GET|PUT /api/selfupdate/schedule` | Daily or weekly, inside a two hour window |
 
 ## Contract
 
@@ -24,6 +24,8 @@ Checked against `internal/server/server.go` and `internal/modules`.
 | `GET /api/update` | none | `owut check -v` parsed: versions, warnings, `safe_to_proceed`, missing packages |
 | `POST /api/update` | `{"confirm":true}` | `{"started":true,"reboot_pending":true}` before the router downloads and flashes |
 | `POST /api/selfupdate` | `{"confirm":true}` | The panel starts downloading and restarting |
+| `GET /api/selfupdate/schedule` | none | Config, last run and current status |
+| `PUT /api/selfupdate/schedule` | `{"enabled","intervalHours","windowStart","windowEnd"}` | Only the fields that change; the rest is kept |
 
 ## Rules
 
@@ -64,13 +66,25 @@ Checked against `internal/server/server.go` and `internal/modules`.
 - Warnings from owut are listed verbatim; the app does not summarise them into
   "safe".
 
+## Panel update schedule
+
+- Daily (24 h) or weekly (168 h), inside a two hour window. The window start
+  moves in one hour steps and the end follows two hours later, wrapping past
+  midnight.
+- Every control saves immediately through a partial `PUT` and the result is
+  confirmed with a `GET`. The last result and its time are shown when the
+  router has run a check.
+- The schedule only updates the NetGrip panel, never the router firmware: a
+  firmware upgrade reboots the router and is not something to run unattended
+  from this app.
+
 ## Gates
 
 ```
 ./gradlew :shared:testAndroidHostTest :shared:compileKotlinIosSimulatorArm64 :androidApp:assembleDebug
 ```
 
-Host tests cover the firmware and panel update bodies, their waits, the reboot body, the polling until the router returns, the
+Host tests cover the schedule partial body and its re-read, the firmware and panel update bodies, their waits, the reboot body, the polling until the router returns, the
 timeout message, the lost session, and the password success and rejection
 paths.
 
