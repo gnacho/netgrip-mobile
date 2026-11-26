@@ -58,6 +58,9 @@ ESTADO = {
     "confirm": None,
     "snapshot": None,
     "password_changed": False,
+    "snapshots": [{"id": "20261126-120000", "timestamp": 1790000000, "configs": 9},
+                  {"id": "20261125-090000", "timestamp": 1789900000, "configs": 8}],
+    "snapshot_seq": 1,
     "firmware_started": False,
     "schedule": {"config": {"enabled": False, "intervalHours": 168,
                             "windowStart": 3, "windowEnd": 5},
@@ -185,6 +188,14 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/iotwifi":
             self._send(200, ESTADO["iot"])
+            return
+        if path == "/api/config/snapshots":
+            self._send(200, {"snapshots": ESTADO["snapshots"]})
+            return
+        if path == "/api/config/diff":
+            self._send(200, {"diffs": [{"config": "network",
+                "before": "config interface 'lan'\n\toption ipaddr '192.168.1.1'",
+                "after": "config interface 'lan'\n\toption ipaddr '192.168.1.2'"}]})
             return
         if path == "/api/config/confirm":
             pending = ESTADO["confirm"]
@@ -391,6 +402,19 @@ class Handler(BaseHTTPRequestHandler):
             i["band"] = body.get("band", i["band"])
             self._send(200, {"status": "applied", "rolled_back": False, "state": i})
             return
+        if path == "/api/config/snapshot":
+            ESTADO["snapshot_seq"] += 1
+            snap = {"id": f"20261126-13000{ESTADO['snapshot_seq']}",
+                    "timestamp": int(time.time()), "configs": 9}
+            ESTADO["snapshots"].insert(0, snap)
+            self._send(200, snap)
+            return
+        if path == "/api/config/rollback":
+            self._send(200, {"status": "applied"})
+            return
+        if path == "/api/config/snapshot" and self.command == "DELETE":
+            self._send(204)
+            return
         if path == "/api/config/confirm":
             pending = ESTADO["confirm"]
             if not pending or pending["id"] != body.get("id"):
@@ -413,6 +437,20 @@ class Handler(BaseHTTPRequestHandler):
                 ESTADO["radios"] = snap
             ESTADO["snapshot"] = None
             self._send(200, {"status": "reverted"})
+            return
+        self._send(404, {"error": "not found"})
+
+    def do_DELETE(self):
+        path = self.path.split("?", 1)[0]
+        query = self.path.split("?", 1)[1] if "?" in self.path else ""
+        print(f"DELETE {path} {query}", flush=True)
+        if path == "/api/config/snapshot":
+            sid = ""
+            for part in query.split("&"):
+                if part.startswith("id="):
+                    sid = part[3:]
+            ESTADO["snapshots"] = [x for x in ESTADO["snapshots"] if x["id"] != sid]
+            self._send(204)
             return
         self._send(404, {"error": "not found"})
 

@@ -37,7 +37,12 @@ import dev.gnacho.netgrip.data.dto.TelegramSetRequest
 import dev.gnacho.netgrip.data.dto.TelegramSetResponse
 import dev.gnacho.netgrip.data.dto.PasswordChangeRequest
 import dev.gnacho.netgrip.data.dto.DdnsDto
+import dev.gnacho.netgrip.data.dto.ConfigSnapshotDto
 import dev.gnacho.netgrip.data.dto.DdnsForceRequest
+import dev.gnacho.netgrip.data.dto.DiffsDto
+import dev.gnacho.netgrip.data.dto.RollbackRequest
+import dev.gnacho.netgrip.data.dto.RollbackResponse
+import dev.gnacho.netgrip.data.dto.SnapshotsDto
 import dev.gnacho.netgrip.data.dto.DiagnosticsOutcome
 import dev.gnacho.netgrip.data.dto.DiagnosticsRunRequest
 import dev.gnacho.netgrip.data.dto.SelfTestDto
@@ -78,6 +83,7 @@ import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.timeout
 import io.ktor.client.request.HttpRequestBuilder
+import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -335,6 +341,39 @@ class NetGripApi(
     /** POST /api/iotwifi, con el mismo healthcheck que invitados. */
     suspend fun setIoTWifi(cfg: IoTConfigRequest): ApiResult<NetworkWriteResponse<IoTProbeDto>> =
         postJson("/api/iotwifi", cfg, longRunning = true) { json.decodeFromJsonElement(it) }
+
+    /** GET /api/config/snapshots: copias guardadas en el router. */
+    suspend fun snapshots(): ApiResult<SnapshotsDto> =
+        getData("/api/config/snapshots") { json.decodeFromJsonElement(it) }
+
+    /** POST /api/config/snapshot: guarda una copia de la configuracion UCI. */
+    suspend fun createSnapshot(): ApiResult<ConfigSnapshotDto> =
+        postJson("/api/config/snapshot", EmptyRequest()) { json.decodeFromJsonElement(it) }
+
+    /** GET /api/config/diff: que cambia entre dos copias. */
+    suspend fun diffSnapshots(from: String, to: String): ApiResult<DiffsDto> =
+        getData("/api/config/diff?from=${from.encodeURLParameter()}&to=${to.encodeURLParameter()}") {
+            json.decodeFromJsonElement(it)
+        }
+
+    /** POST /api/config/rollback: restaura una copia y recarga la red. */
+    suspend fun rollbackSnapshot(id: String): ApiResult<RollbackResponse> =
+        postJson("/api/config/rollback", RollbackRequest(id), longRunning = true) {
+            json.decodeFromJsonElement(it)
+        }
+
+    /** DELETE /api/config/snapshot? Solo se llama con confirmacion. */
+    suspend fun deleteSnapshot(id: String): ApiResult<Unit> = safeCall {
+        val response = client.delete("$baseUrl/api/config/snapshot?id=${id.encodeURLParameter()}") {
+            sessionHeader()
+        }
+        when (response.status) {
+            HttpStatusCode.NoContent, HttpStatusCode.OK -> ApiResult.Ok(Unit)
+            HttpStatusCode.Unauthorized -> ApiResult.Unauthorized
+            HttpStatusCode.TooManyRequests -> ApiResult.RateLimited(retryAfter(response))
+            else -> ApiResult.HttpError(response.status.value, errorMessage(response))
+        }
+    }
 
     /** GET /api/diagnostics/selftest: comprobacion de gateway, WAN, DNS y NTP. */
     suspend fun selfTest(): ApiResult<SelfTestDto> =
