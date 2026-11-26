@@ -30,7 +30,16 @@ import dev.gnacho.netgrip.data.dto.LoginRequest
 import dev.gnacho.netgrip.data.dto.LogsDto
 import dev.gnacho.netgrip.data.dto.MdnsDto
 import dev.gnacho.netgrip.data.dto.PasswordChangeRequest
+import dev.gnacho.netgrip.data.dto.DdnsDto
+import dev.gnacho.netgrip.data.dto.DdnsForceRequest
+import dev.gnacho.netgrip.data.dto.OpenVpnDto
 import dev.gnacho.netgrip.data.dto.RebootResponseDto
+import dev.gnacho.netgrip.data.dto.RemoteAccessDto
+import dev.gnacho.netgrip.data.dto.RemoteAccessRequest
+import dev.gnacho.netgrip.data.dto.RemoteWriteResponse
+import dev.gnacho.netgrip.data.dto.TailscaleDto
+import dev.gnacho.netgrip.data.dto.TailscaleSetRequest
+import dev.gnacho.netgrip.data.dto.WireGuardDto
 import dev.gnacho.netgrip.data.dto.ModeDto
 import dev.gnacho.netgrip.data.dto.SelfUpdateDto
 import dev.gnacho.netgrip.data.dto.SelfUpdateScheduleDto
@@ -317,6 +326,43 @@ class NetGripApi(
     /** POST /api/iotwifi, con el mismo healthcheck que invitados. */
     suspend fun setIoTWifi(cfg: IoTConfigRequest): ApiResult<NetworkWriteResponse<IoTProbeDto>> =
         postJson("/api/iotwifi", cfg, longRunning = true) { json.decodeFromJsonElement(it) }
+
+    /** GET /api/tailscale: estado del nodo Tailscale del router. */
+    suspend fun tailscale(): ApiResult<TailscaleDto> =
+        getData("/api/tailscale") { json.decodeFromJsonElement(it) }
+
+    /** POST /api/tailscale: arranca o para el nodo Tailscale. */
+    suspend fun setTailscale(enabled: Boolean): ApiResult<RemoteWriteResponse<TailscaleDto>> =
+        postJson("/api/tailscale", TailscaleSetRequest(enabled)) { json.decodeFromJsonElement(it) }
+
+    /** GET /api/wireguard: servidor WireGuard y sus peers, solo lectura. */
+    suspend fun wireGuard(): ApiResult<WireGuardDto> =
+        getData("/api/wireguard") { json.decodeFromJsonElement(it) }
+
+    /** GET /api/openvpn: servidor OpenVPN, solo lectura. */
+    suspend fun openVpn(): ApiResult<OpenVpnDto> =
+        getData("/api/openvpn") { json.decodeFromJsonElement(it) }
+
+    /** GET /api/ddns: entradas de nombre dinamico. */
+    suspend fun ddns(): ApiResult<DdnsDto> =
+        getData("/api/ddns") { json.decodeFromJsonElement(it) }
+
+    /**
+     * POST /api/ddns/force. Con [section] vacia actualiza todas las entradas,
+     * que es lo que ofrece la pantalla. Tarda: el router llama al proveedor.
+     */
+    suspend fun forceDdns(section: String = ""): ApiResult<RemoteWriteResponse<DdnsDto>> =
+        postJson("/api/ddns/force", DdnsForceRequest(section), longRunning = true) {
+            json.decodeFromJsonElement(it)
+        }
+
+    /** GET /api/remoteaccess: que puertos de la WAN aceptan conexiones. */
+    suspend fun remoteAccess(): ApiResult<RemoteAccessDto> =
+        getData("/api/remoteaccess") { json.decodeFromJsonElement(it) }
+
+    /** POST /api/remoteaccess: abre o cierra un permiso de la WAN. */
+    suspend fun setRemoteAccess(req: RemoteAccessRequest): ApiResult<RemoteWriteResponse<RemoteAccessDto>> =
+        postJson("/api/remoteaccess", req) { json.decodeFromJsonElement(it) }
 
     /** GET /api/update: estado del firmware segun `owut check`. */
     suspend fun updateCheck(): ApiResult<UpdateCheckDto> =
