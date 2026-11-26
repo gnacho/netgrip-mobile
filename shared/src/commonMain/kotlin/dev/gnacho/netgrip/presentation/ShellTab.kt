@@ -9,6 +9,7 @@ enum class ShellTab(val label: String) {
     REMOTE("Acceso remoto"),
     FLEET("Flota"),
     SNAPSHOTS("Copias"),
+    STORAGE("Almacenamiento"),
     PORTS("Puertos"),
     DIAGNOSTICS("Diagnóstico"),
     SETTINGS("Ajustes"),

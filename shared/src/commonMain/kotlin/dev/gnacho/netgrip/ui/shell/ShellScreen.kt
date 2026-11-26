@@ -79,6 +79,7 @@ private val Navigation = listOf(
     NavEntry(ShellTab.REMOTE, NetGripIcons.Globe, "Tu red"),
     NavEntry(ShellTab.FLEET, NetGripIcons.Router, "Tu red"),
     NavEntry(ShellTab.SNAPSHOTS, NetGripIcons.Archive, "Sistema"),
+    NavEntry(ShellTab.STORAGE, NetGripIcons.Layers, "Sistema"),
     NavEntry(ShellTab.PORTS, NetGripIcons.Ports, "Tu red"),
     NavEntry(ShellTab.DIAGNOSTICS, NetGripIcons.Diagnostics, "Sistema"),
     NavEntry(ShellTab.SETTINGS, NetGripIcons.Settings, "Sistema"),
@@ -196,6 +197,7 @@ fun ShellScreen(
                         onAdoptDevice = sessionViewModel::addAdoptedDevice,
                     )
                     ShellTab.SNAPSHOTS -> SnapshotsScreen(viewModel)
+                    ShellTab.STORAGE -> StorageScreen(viewModel)
                     ShellTab.DIAGNOSTICS -> DiagnosticsScreen(viewModel)
                     ShellTab.PORTS -> PortsScreen(viewModel)
                     ShellTab.SETTINGS -> SettingsScreen(
