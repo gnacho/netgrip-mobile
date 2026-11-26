@@ -11,7 +11,11 @@ import dev.gnacho.netgrip.data.dto.ClientMetaEntryDto
 import dev.gnacho.netgrip.data.dto.ClientMetaDto
 import dev.gnacho.netgrip.data.dto.ClientsDto
 import dev.gnacho.netgrip.data.dto.EthPortDto
+import dev.gnacho.netgrip.data.dto.GuestConfigRequest
+import dev.gnacho.netgrip.data.dto.GuestProbeDto
 import dev.gnacho.netgrip.data.dto.HistoryEntryDto
+import dev.gnacho.netgrip.data.dto.IoTConfigRequest
+import dev.gnacho.netgrip.data.dto.IoTProbeDto
 import dev.gnacho.netgrip.data.dto.MdnsDto
 import dev.gnacho.netgrip.data.dto.ModeDto
 import dev.gnacho.netgrip.data.dto.SelfUpdateDto
@@ -94,6 +98,9 @@ data class WifiTabState(
     val actionError: String? = null,
     /** Cambios aplicados que el router deshara si no se confirman. */
     val pendingConfirm: PendingConfirm? = null,
+    /** Red de invitados e IoT: null mientras no se hayan leido. */
+    val guest: GuestProbeDto? = null,
+    val iot: IoTProbeDto? = null,
 )
 
 /** Estado de la pestana Puertos. */
@@ -360,6 +367,10 @@ class ShellViewModel(
                 // La ventana de reversion sobrevive a cerrar la app: se
                 // reanuda al cargar la pestana en vez de perderse.
                 val confirm = async { api.confirmStatus() }
+                // Invitados puede no existir en un AP sin firewall: su fallo
+                // no debe tumbar la pestana entera.
+                val guest = async { api.guestWifi() }
+                val iot = async { api.iotWifi() }
                 val modeResult = mode.await()
                 when (val result = wifi.await()) {
                     is ApiResult.Ok -> next = next.copy(interfaces = result.value.interfaces)
@@ -374,6 +385,12 @@ class ShellViewModel(
                         if (result == ApiResult.Unauthorized) _sessionExpired.value = true
                         failure = failure ?: describe(result)
                     }
+                }
+                (guest.await() as? ApiResult.Ok)?.let { result ->
+                    next = next.copy(guest = result.value)
+                }
+                (iot.await() as? ApiResult.Ok)?.let { result ->
+                    next = next.copy(iot = result.value)
                 }
                 (confirm.await() as? ApiResult.Ok)?.let { status ->
                     val id = status.value.id
@@ -455,6 +472,71 @@ class ShellViewModel(
                 }
                 else -> setWifiFeedback(error = failWith(result))
             }
+        }
+    }
+
+    /** POST /api/guestwifi. El router tarda hasta 75 s en responder. */
+    fun applyGuest(cfg: GuestConfigRequest) {
+        if (_wifi.value.busy) return
+        viewModelScope.launch {
+            _wifi.update { it.copy(busy = true, actionMessage = null, actionError = null) }
+            when (val result = api.setGuestWifi(cfg)) {
+                is ApiResult.Ok -> finishNetworkWrite(
+                    status = result.value.status,
+                    rolledBack = result.value.rolledBack,
+                    error = result.value.error,
+                    isGuest = true,
+                )
+                else -> setWifiFeedback(error = failWith(result))
+            }
+        }
+    }
+
+    /** POST /api/iotwifi, mismo healthcheck y misma relectura. */
+    fun applyIoT(cfg: IoTConfigRequest) {
+        if (_wifi.value.busy) return
+        viewModelScope.launch {
+            _wifi.update { it.copy(busy = true, actionMessage = null, actionError = null) }
+            when (val result = api.setIoTWifi(cfg)) {
+                is ApiResult.Ok -> finishNetworkWrite(
+                    status = result.value.status,
+                    rolledBack = result.value.rolledBack,
+                    error = result.value.error,
+                    isGuest = false,
+                )
+                else -> setWifiFeedback(error = failWith(result))
+            }
+        }
+    }
+
+    /** Relee solo la red que se acaba de tocar. */
+    private suspend fun finishNetworkWrite(
+        status: String,
+        rolledBack: Boolean,
+        error: String?,
+        isGuest: Boolean,
+    ) {
+        var readError: String? = null
+        if (isGuest) {
+            when (val read = api.guestWifi()) {
+                is ApiResult.Ok -> _wifi.update { it.copy(guest = read.value) }
+                else -> readError = failWith(read)
+            }
+        } else {
+            when (val read = api.iotWifi()) {
+                is ApiResult.Ok -> _wifi.update { it.copy(iot = read.value) }
+                else -> readError = failWith(read)
+            }
+        }
+        val name = if (isGuest) "Red de invitados" else "Red IoT"
+        when {
+            rolledBack || status == "rolled_back" || status == "failed" ->
+                setWifiFeedback(
+                    error = error?.takeIf { it.isNotBlank() }
+                        ?: "$name: el router deshizo el cambio y dejó la configuración como estaba",
+                )
+            readError != null -> setWifiFeedback(error = "$name aplicada, pero no se pudo releer: $readError")
+            else -> setWifiFeedback(message = "$name aplicada y verificada")
         }
     }
 

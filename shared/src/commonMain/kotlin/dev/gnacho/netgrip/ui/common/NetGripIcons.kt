@@ -72,6 +72,8 @@ object NetGripIcons {
     val ArrowDown: ImageVector by lazy { lucide("ArrowDown", "M12 5v14", "m19 12-7 7-7-7") }
     val Gauge: ImageVector by lazy { lucide("Gauge", "m12 14 4-4", "M3.34 19a10 10 0 1 1 17.32 0") }
     val Clock: ImageVector by lazy { lucide("Clock", "M2 12a10 10 0 1 0 20 0a10 10 0 1 0 -20 0", "M12 6v6l4 2") }
+    val Users: ImageVector by lazy { lucide("Users", "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2", "M9 3a4 4 0 1 0 0 8a4 4 0 1 0 0 -8", "M22 21v-2a4 4 0 0 0-3-3.87", "M16 3.13a4 4 0 0 1 0 7.75") }
+    val Cpu: ImageVector by lazy { lucide("Cpu", "M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2z", "M9 9h6v6h-6z", "M9 1v3", "M15 1v3", "M9 20v3", "M15 20v3", "M20 9h3", "M20 14h3", "M1 9h3", "M1 14h3") }
     val RadioTower: ImageVector by lazy { lucide("RadioTower", "M4.9 16.1C1 12.2 1 5.8 4.9 1.9", "M7.8 4.7a6.14 6.14 0 0 0-.8 7.5", "M10 9a2 2 0 1 0 4 0a2 2 0 1 0 -4 0", "M16.2 4.7c2.1 2.1 2.6 5.3 1.1 7.5", "M19.1 1.9C23 5.8 23 12.2 19.1 16.1") }
     val EthernetPort: ImageVector by lazy { lucide("EthernetPort", "M10 8v1", "M14 8v1", "M18 8v1", "M19 17a2 2 0 00-1.765 1.059l-.47.882A2 2 0 0115 20H9a2 2 0 01-1.765-1.059l-.47-.882A2 2 0 005 17H4a2 2 0 01-2-2V6a2 2 0 012-2h16a2 2 0 012 2v9a2 2 0 01-2 2z", "M6 8v1") }
     val Network: ImageVector by lazy { lucide("Network", "M17 16h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-4a1 1 0 0 1 1 -1z", "M3 16h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-4a1 1 0 0 1 1 -1z", "M10 2h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-4a1 1 0 0 1 1 -1z", "M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3", "M12 12V8") }

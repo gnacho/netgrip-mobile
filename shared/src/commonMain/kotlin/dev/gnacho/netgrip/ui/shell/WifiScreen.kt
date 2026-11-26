@@ -50,10 +50,15 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import dev.gnacho.netgrip.data.dto.GuestConfigRequest
+import dev.gnacho.netgrip.data.dto.GuestProbeDto
+import dev.gnacho.netgrip.data.dto.IoTConfigRequest
+import dev.gnacho.netgrip.data.dto.IoTProbeDto
 import dev.gnacho.netgrip.data.dto.RadioEditRequest
 import dev.gnacho.netgrip.data.dto.WifiEditRequest
 import dev.gnacho.netgrip.data.dto.WifiUiDto
 import dev.gnacho.netgrip.data.dto.WirelessRadioDto
+import dev.gnacho.netgrip.domain.wifi.NetworkEditRules
 import dev.gnacho.netgrip.domain.wifi.WifiEditRules
 import dev.gnacho.netgrip.domain.wifi.WifiGroup
 import dev.gnacho.netgrip.domain.wifi.WifiGrouping
@@ -80,6 +85,8 @@ fun WifiScreen(viewModel: ShellViewModel) {
     val state by viewModel.wifi.collectAsState()
     var editing by remember { mutableStateOf<WifiGroup?>(null) }
     var tuning by remember { mutableStateOf<WirelessRadioDto?>(null) }
+    var guestOpen by remember { mutableStateOf(false) }
+    var iotOpen by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(Unit) { viewModel.ensureWifi() }
 
@@ -156,6 +163,12 @@ fun WifiScreen(viewModel: ShellViewModel) {
                             onRadio = { radio -> tuning = radio },
                         )
                     }
+                    state.guest?.let { guest ->
+                        item { GuestCard(guest = guest, busy = state.busy) { guestOpen = true } }
+                    }
+                    state.iot?.let { iot ->
+                        item { IoTCard(iot = iot, busy = state.busy) { iotOpen = true } }
+                    }
                 }
             }
         }
@@ -179,6 +192,34 @@ fun WifiScreen(viewModel: ShellViewModel) {
                 viewModel.applyWifi(edit)
             },
         )
+    }
+
+    if (guestOpen) {
+        state.guest?.let { guest ->
+            GuestSheet(
+                guest = guest,
+                busy = state.busy,
+                onDismiss = { guestOpen = false },
+                onApply = { cfg ->
+                    guestOpen = false
+                    viewModel.applyGuest(cfg)
+                },
+            )
+        }
+    }
+
+    if (iotOpen) {
+        state.iot?.let { iot ->
+            IoTSheet(
+                iot = iot,
+                busy = state.busy,
+                onDismiss = { iotOpen = false },
+                onApply = { cfg ->
+                    iotOpen = false
+                    viewModel.applyIoT(cfg)
+                },
+            )
+        }
     }
 
     tuning?.let { radio ->
@@ -713,5 +754,375 @@ private fun SwitchRow(
             // La fila entera conmuta; el switch solo refleja el estado.
             androidx.compose.material3.Switch(checked = checked, onCheckedChange = null)
         }
+    }
+}
+
+/** Red de invitados: existe solo en un equipo con firewall (gateway). */
+@Composable
+private fun GuestCard(guest: GuestProbeDto, busy: Boolean, onEdit: () -> Unit) {
+    NetGripCard(
+        eyebrow = "INVITADOS",
+        title = "Red de invitados",
+        subtitle = NetworkEditRules.summary(guest.active, guest.ssid, guest.clients),
+        icon = NetGripIcons.Users,
+        iconTone = if (guest.active) Tone.VIOLET else Tone.NEUTRAL,
+    ) {
+        if (!guest.gateway) {
+            Text(
+                "Este router trabaja como punto de acceso. La red de invitados necesita un equipo con firewall y salida a Internet.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            return@NetGripCard
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Pill(
+                if (guest.active) "Activa" else "Desactivada",
+                if (guest.active) Tone.SUCCESS else Tone.NEUTRAL,
+            )
+            if (guest.isolate) Pill("Aislada", Tone.TEAL, dot = false)
+            guest.subnet.takeIf { it.isNotBlank() }?.let { Pill(it, Tone.NEUTRAL, dot = false) }
+        }
+        if (guest.glConflict) {
+            Spacer(Modifier.size(8.dp))
+            Banner(
+                "El firmware del router también define redes de invitado. NetGrip usa las suyas para no mezclarse.",
+                Tone.WARN,
+            )
+        }
+        Spacer(Modifier.size(10.dp))
+        CardDivider()
+        Spacer(Modifier.size(10.dp))
+        OutlinedButton(
+            onClick = onEdit,
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+        ) {
+            Icon(NetGripIcons.Pencil, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Configurar invitados")
+        }
+    }
+}
+
+/** SSID aparte para dispositivos que no deben ver la red de casa. */
+@Composable
+private fun IoTCard(iot: IoTProbeDto, busy: Boolean, onEdit: () -> Unit) {
+    NetGripCard(
+        eyebrow = "DISPOSITIVOS",
+        title = "Red IoT",
+        subtitle = NetworkEditRules.summary(iot.active, iot.ssid, iot.clients),
+        icon = NetGripIcons.Cpu,
+        iconTone = if (iot.active) Tone.TEAL else Tone.NEUTRAL,
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Pill(
+                if (iot.active) "Activa" else "Desactivada",
+                if (iot.active) Tone.SUCCESS else Tone.NEUTRAL,
+            )
+            iot.band.takeIf { it.isNotBlank() }?.let {
+                Pill(NetworkEditRules.bandLabel(it), Tone.NEUTRAL, dot = false)
+            }
+            if (iot.isolated) Pill("Aislada", Tone.TEAL, dot = false)
+        }
+        Spacer(Modifier.size(10.dp))
+        CardDivider()
+        Spacer(Modifier.size(10.dp))
+        OutlinedButton(
+            onClick = onEdit,
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+        ) {
+            Icon(NetGripIcons.Pencil, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Configurar IoT")
+        }
+    }
+}
+
+/** Editor de la red de invitados. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun GuestSheet(
+    guest: GuestProbeDto,
+    busy: Boolean,
+    onDismiss: () -> Unit,
+    onApply: (GuestConfigRequest) -> Unit,
+) {
+    var enabled by remember { mutableStateOf(guest.active) }
+    var ssid by remember { mutableStateOf(guest.ssid) }
+    var key by remember { mutableStateOf("") }
+    var band by remember { mutableStateOf("both") }
+    var subnet by remember { mutableStateOf(guest.subnet) }
+    var isolate by remember { mutableStateOf(guest.isolate) }
+    var confirmOpen by remember { mutableStateOf(false) }
+
+    val keyRequired = NetworkEditRules.guestNeedsKey(guest.ssid)
+    val configError = NetworkEditRules.configError(enabled, ssid, key, keyRequired)
+    val subnetError = NetworkEditRules.subnetError(subnet)
+    val canSave = !busy && configError == null && subnetError == null
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
+        dragHandle = null,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("Red de invitados", style = MaterialTheme.typography.headlineSmall)
+            Text(
+                "Una red aparte para visitas: no ve a los dispositivos de casa.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            SwitchRow(
+                title = "Activar la red de invitados",
+                subtitle = "Apagarla desconecta a quien esté conectado.",
+                checked = enabled,
+                onChange = { enabled = it },
+            )
+
+            OutlinedTextField(
+                value = ssid,
+                onValueChange = { ssid = it.take(32) },
+                label = { Text("Nombre de la red") },
+                singleLine = true,
+                isError = enabled && configError != null && ssid.trim().isEmpty(),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = key,
+                onValueChange = { key = it.take(63) },
+                label = { Text("Clave") },
+                placeholder = {
+                    Text(if (keyRequired) "Obligatoria al activarla" else "Sin cambios")
+                },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                isError = enabled && configError != null && configError.contains("clave", ignoreCase = true),
+                supportingText = {
+                    Text(
+                        configError?.takeIf { enabled }
+                            ?: if (keyRequired) {
+                                "Nunca se muestra ni se guarda."
+                            } else {
+                                "Vacía deja la clave actual. Nunca se muestra ni se guarda."
+                            },
+                    )
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Text("Banda", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            SegmentedControl(
+                options = NetworkEditRules.bands.map { it to NetworkEditRules.bandLabel(it) },
+                selected = band,
+                onSelect = { band = it },
+            )
+
+            OutlinedTextField(
+                value = subnet,
+                onValueChange = { subnet = it.take(15) },
+                label = { Text("Subred (opcional)") },
+                placeholder = { Text("Automática") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                isError = subnetError != null,
+                supportingText = { Text(subnetError ?: "Vacía deja la que ya hay.") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            SwitchRow(
+                title = "Aislar a los invitados",
+                subtitle = "No pueden hablar entre ellos ni con la red de casa.",
+                checked = isolate,
+                onChange = { isolate = it },
+            )
+
+            Banner(
+                "Al guardar, los invitados pueden desconectarse mientras las radios se recargan. El router comprueba el resultado y deshace el cambio si algo falla.",
+                Tone.WARN,
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f),
+                ) { Text("Cancelar") }
+                Button(
+                    onClick = { confirmOpen = true },
+                    enabled = canSave,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    if (busy) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text("Guardar")
+                    }
+                }
+            }
+        }
+    }
+
+    if (confirmOpen) {
+        ConfirmDialog(
+            title = if (enabled) "Activar la red de invitados" else "Desactivar la red de invitados",
+            body = if (enabled) {
+                "Se emitirá \"${ssid.trim()}\" en ${NetworkEditRules.bandLabel(band)}. " +
+                    "Los invitados conectados pueden perder la conexión mientras se aplica."
+            } else {
+                "Se apagará la red de invitados y sus clientes se desconectarán."
+            },
+            confirmLabel = if (enabled) "Activar" else "Desactivar",
+            onDismiss = { confirmOpen = false },
+            onConfirm = {
+                confirmOpen = false
+                onApply(
+                    GuestConfigRequest(
+                        enabled = enabled,
+                        ssid = ssid.trim(),
+                        key = key,
+                        band = band,
+                        subnet = subnet.trim(),
+                        isolate = isolate,
+                    ),
+                )
+            },
+        )
+    }
+}
+
+/** Editor del SSID de dispositivos IoT. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun IoTSheet(
+    iot: IoTProbeDto,
+    busy: Boolean,
+    onDismiss: () -> Unit,
+    onApply: (IoTConfigRequest) -> Unit,
+) {
+    var enabled by remember { mutableStateOf(iot.active) }
+    var ssid by remember { mutableStateOf(iot.ssid) }
+    var key by remember { mutableStateOf("") }
+    var band by remember { mutableStateOf(iot.band.ifBlank { "both" }) }
+    var confirmOpen by remember { mutableStateOf(false) }
+
+    val configError = NetworkEditRules.configError(enabled, ssid, key)
+    val canSave = !busy && configError == null
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
+        dragHandle = null,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("Red IoT", style = MaterialTheme.typography.headlineSmall)
+            Text(
+                "Un SSID para bombillas, enchufes y sensores, separado del resto.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            SwitchRow(
+                title = "Activar la red IoT",
+                subtitle = "Apagarla desconecta los dispositivos que la usan.",
+                checked = enabled,
+                onChange = { enabled = it },
+            )
+
+            OutlinedTextField(
+                value = ssid,
+                onValueChange = { ssid = it.take(32) },
+                label = { Text("Nombre de la red") },
+                singleLine = true,
+                isError = enabled && configError != null && ssid.trim().isEmpty(),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = key,
+                onValueChange = { key = it.take(63) },
+                label = { Text("Clave") },
+                placeholder = { Text("Obligatoria al activarla") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                isError = enabled && configError != null && configError.contains("clave", ignoreCase = true),
+                supportingText = {
+                    Text(configError?.takeIf { enabled } ?: "Nunca se muestra ni se guarda.")
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Text("Banda", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            SegmentedControl(
+                options = NetworkEditRules.bands.map { it to NetworkEditRules.bandLabel(it) },
+                selected = band,
+                onSelect = { band = it },
+            )
+
+            Banner(
+                "Al guardar, los dispositivos de esta red pueden desconectarse mientras la radio se recarga.",
+                Tone.WARN,
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f),
+                ) { Text("Cancelar") }
+                Button(
+                    onClick = { confirmOpen = true },
+                    enabled = canSave,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    if (busy) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text("Guardar")
+                    }
+                }
+            }
+        }
+    }
+
+    if (confirmOpen) {
+        ConfirmDialog(
+            title = if (enabled) "Activar la red IoT" else "Desactivar la red IoT",
+            body = if (enabled) {
+                "Se emitirá \"${ssid.trim()}\" en ${NetworkEditRules.bandLabel(band)}. " +
+                    "Los dispositivos conectados pueden perder la conexión mientras se aplica."
+            } else {
+                "Se apagará la red IoT y sus dispositivos se desconectarán."
+            },
+            confirmLabel = if (enabled) "Activar" else "Desactivar",
+            onDismiss = { confirmOpen = false },
+            onConfirm = {
+                confirmOpen = false
+                onApply(IoTConfigRequest(enabled = enabled, ssid = ssid.trim(), key = key, band = band))
+            },
+        )
     }
 }
