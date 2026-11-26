@@ -16,11 +16,11 @@ This is the read-only shell plus the first safe client actions. The client tab c
 
 The WiFi tab can rename a network, change its key and security, hide it or stop emitting it, set the channel, width and power of each radio, configure the guest and IoT networks and set a weekly schedule per band. Every change is confirmed, arms the router rollback window with a countdown, keeps the key write only and re-reads the state. See [docs/wifi-writes.md](docs/wifi-writes.md).
 
-The Settings tab can reboot the router, waiting until it answers again, and change the admin password, which closes every panel session and returns to the login. See [docs/system-actions.md](docs/system-actions.md).
+The Settings tab can reboot the router, waiting until it answers again, change the admin password, which closes every panel session and returns to the login, install router firmware when owut reports it is safe, and update the NetGrip panel. See [docs/system-actions.md](docs/system-actions.md).
 
 The app can also hold as many networks and routers as needed. The header has a network selector and a device selector, each with its own sheet, and every router keeps its own encrypted session. Devices can be added by URL with inline credentials, or imported from the router fleet. See [docs/multi-network.md](docs/multi-network.md).
 
-261 Android host tests and the debug APK build pass. Emulator tests are done against a mock API. Validation against a real router is still pending.
+263 Android host tests and the debug APK build pass. Emulator tests are done against a mock API. Validation against a real router is still pending.
 
 The shell is described in [docs/readonly-shell.md](docs/readonly-shell.md), the client writes in [docs/client-writes.md](docs/client-writes.md), the WiFi writes in [docs/wifi-writes.md](docs/wifi-writes.md), the system actions in [docs/system-actions.md](docs/system-actions.md) and the network and device handling in [docs/multi-network.md](docs/multi-network.md).
 

@@ -3,6 +3,7 @@ package dev.gnacho.netgrip.ui.shell
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,6 +18,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
@@ -44,6 +46,7 @@ import dev.gnacho.netgrip.data.dto.BoardDto
 import dev.gnacho.netgrip.data.dto.MdnsDto
 import dev.gnacho.netgrip.data.dto.ModeDto
 import dev.gnacho.netgrip.data.dto.SelfUpdateDto
+import dev.gnacho.netgrip.data.dto.UpdateCheckDto
 import dev.gnacho.netgrip.presentation.SettingsState
 import dev.gnacho.netgrip.presentation.ShellViewModel
 import dev.gnacho.netgrip.ui.common.Banner
@@ -105,7 +108,17 @@ fun SettingsScreen(
             item { ModeCard(state.mode) }
             item { AccessCard(state.access) }
             item { MdnsCard(state.mdns) }
-            item { UpdateCard(state.selfUpdate) }
+            state.rebooting.takeIf { it }?.let { _ ->
+                item {
+                    Banner(
+                        "El router se está reiniciando. La app espera a que vuelva; no hace falta reintentar.",
+                        Tone.WARN,
+                        icon = NetGripIcons.Refresh,
+                    )
+                }
+            }
+            item { FirmwareCard(state.firmware, state.actionBusy) { viewModel.installFirmware() } }
+            item { UpdateCard(state.selfUpdate, state.actionBusy) { viewModel.updateNetGrip() } }
             item {
                 SystemActionsCard(
                     state = state,
@@ -259,7 +272,8 @@ private fun MdnsCard(mdns: MdnsDto?) {
 }
 
 @Composable
-private fun UpdateCard(update: SelfUpdateDto?) {
+private fun UpdateCard(update: SelfUpdateDto?, busy: Boolean, onUpdate: () -> Unit) {
+    var confirmOpen by remember { mutableStateOf(false) }
     NetGripCard(
         eyebrow = "Sistema",
         title = "Actualización",
@@ -299,11 +313,173 @@ private fun UpdateCard(update: SelfUpdateDto?) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        if (update.available) {
+            Spacer(Modifier.size(10.dp))
+            OutlinedButton(
+                onClick = { confirmOpen = true },
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Icon(NetGripIcons.CloudOff, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Actualizar NetGrip")
+            }
+        }
+    }
+
+    if (confirmOpen) {
+        AlertDialog(
+            onDismissRequest = { confirmOpen = false },
+            icon = { IconTile(NetGripIcons.CloudOff, Tone.VIOLET) },
+            title = { Text("Actualizar NetGrip a ${update?.latest.orEmpty()}") },
+            text = {
+                Text(
+                    "Se descargará la versión ${update?.latest.orEmpty()} y el panel se reiniciará. " +
+                        "El router y su red siguen funcionando; solo el panel deja de responder unos segundos.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        confirmOpen = false
+                        onUpdate()
+                    },
+                ) { Text("Actualizar") }
+            },
+            dismissButton = { TextButton(onClick = { confirmOpen = false }) { Text("Cancelar") } },
+        )
+    }
+}
+
+/**
+ * Firmware del router (owut). Solo se ofrece instalar cuando el router dice
+ * que hay version nueva y que es seguro; el riesgo se explica antes.
+ */
+@Composable
+private fun FirmwareCard(
+    firmware: UpdateCheckDto?,
+    busy: Boolean,
+    onInstall: () -> Unit,
+) {
+    var confirmOpen by remember { mutableStateOf(false) }
+    var accepted by remember { mutableStateOf(false) }
+    val showUpgrade = firmware != null &&
+        firmware.available &&
+        !firmware.sameVersion &&
+        firmware.owutPresent
+    val blocked = firmware != null && !firmware.safeToProceed && !firmware.safeWithReinstall
+
+    NetGripCard(
+        eyebrow = "Sistema",
+        title = "Firmware del router",
+        icon = NetGripIcons.Router,
+        iconTone = if (showUpgrade) Tone.WARN else Tone.TEAL,
+    ) {
+        if (firmware == null) {
+            Text(
+                "No se pudo leer el estado del firmware. Puede que este router no tenga owut: en ese caso se actualiza desde LuCI.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            return@NetGripCard
+        }
+        if (!firmware.owutPresent) {
+            Text(
+                "owut no está instalado, así que el router no puede actualizarse desde aquí. Usa LuCI o la consola.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            return@NetGripCard
+        }
+        InfoRow("Instalada", firmware.versionFrom.ifBlank { "Sin dato" }, mono = true)
+        if (showUpgrade) {
+            InfoRow("Disponible", firmware.versionTo.ifBlank { "Sin dato" }, mono = true)
+        }
         Spacer(Modifier.size(6.dp))
-        Text(
-            "Las actualizaciones se lanzan desde el panel web.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        when {
+            firmware.upgradeStarted -> Pill("Actualización en marcha", Tone.WARN)
+            showUpgrade && blocked -> Pill("Bloqueada por owut", Tone.DANGER)
+            showUpgrade -> Pill("Hay firmware nuevo", Tone.WARN)
+            else -> Pill("Al día", Tone.SUCCESS)
+        }
+        if (firmware.warnings.isNotEmpty()) {
+            Spacer(Modifier.size(8.dp))
+            firmware.warnings.forEach { warning ->
+                Text(
+                    "· $warning",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        if (showUpgrade && blocked) {
+            Spacer(Modifier.size(8.dp))
+            Banner(
+                if (firmware.missingPackages.isNotEmpty()) {
+                    "Faltan paquetes en la versión destino: ${firmware.missingPackages.joinToString(", ")}. " +
+                        "owut no lo considera seguro."
+                } else {
+                    "owut no considera seguro actualizar este equipo."
+                },
+                Tone.DANGER,
+            )
+        }
+        if (showUpgrade) {
+            Spacer(Modifier.size(10.dp))
+            OutlinedButton(
+                onClick = { confirmOpen = true },
+                enabled = !busy && !blocked && !firmware.upgradeStarted,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Icon(NetGripIcons.CloudOff, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Instalar firmware ${firmware.versionTo}")
+            }
+        }
+    }
+
+    if (confirmOpen && firmware != null) {
+        AlertDialog(
+            onDismissRequest = { confirmOpen = false },
+            icon = { IconTile(NetGripIcons.Warning, Tone.DANGER) },
+            title = { Text("Instalar firmware ${firmware.versionTo}") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "El router descargará el firmware, lo instalará y se reiniciará. " +
+                            "Dejará de responder varios minutos y se cortará Internet. " +
+                            "Si el firmware no arranca, la recuperación puede exigir acceso físico al equipo.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Checkbox(checked = accepted, onCheckedChange = { accepted = it })
+                        Text(
+                            "Entiendo que el router se reiniciará y puede tardar varios minutos.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        confirmOpen = false
+                        onInstall()
+                    },
+                    enabled = accepted,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError,
+                    ),
+                ) { Text("Instalar") }
+            },
+            dismissButton = { TextButton(onClick = { confirmOpen = false }) { Text("Cancelar") } },
         )
     }
 }

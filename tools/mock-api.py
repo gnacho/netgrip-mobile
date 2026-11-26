@@ -58,6 +58,8 @@ ESTADO = {
     "confirm": None,
     "snapshot": None,
     "password_changed": False,
+    "firmware_started": False,
+    "selfupdate_started": False,
     "guest": {"gateway": True, "active": True, "ssid": "Invitados",
               "subnet": "192.168.9.1", "isolate": True,
               "ifaces": ["phy0-ap1"], "clients": 1, "gl_conflict": False},
@@ -90,7 +92,8 @@ BASE = {
     "/api/history": {"entries": []},
     "/api/access": {"https": False, "port": 8080},
     "/api/mdns": {"enabled": False},
-    "/api/selfupdate": {"available": False, "current": "0.79.99-mock"},
+    "/api/selfupdate": {"available": True, "current": "0.79.99-mock",
+                        "latest": "0.80.1", "notes": "Correcciones del panel"},
     "/api/logs": {"entries": [
         {"ts": "Thu Nov 26 18:00:00 2026", "facility": "daemon", "level": "info",
          "tag": "netgrip[1]", "message": "listening on http://0.0.0.0:8080"},
@@ -165,6 +168,20 @@ class Handler(BaseHTTPRequestHandler):
                 ESTADO["confirm"] = None
                 self._send(200, {"pending": False})
             return
+        if path == "/api/update":
+            self._send(200, {
+                "available": True, "same_version": False, "owut_present": True,
+                "version_from": "24.10.0-rc1", "version_to": "24.10.1",
+                "out_of_date_packages": 3,
+                "warnings": ["3 packages are out-of-date"],
+                "safe_to_proceed": True, "missing_packages": [],
+                "safe_with_reinstall": False,
+                "upgrade_started": ESTADO["firmware_started"],
+            })
+            return
+        if path == "/api/selfupdate/status":
+            self._send(200, {"phase": "idle", "progress": 0})
+            return
         if path in BASE:
             self._send(200, BASE[path])
             return
@@ -210,6 +227,14 @@ class Handler(BaseHTTPRequestHandler):
                 if "txpower" in body:
                     radio["txpower"] = int(body["txpower"])
             self._risky({"status": "applied", "rolled_back": False, "state": ESTADO["radios"][0]})
+            return
+        if path == "/api/update":
+            ESTADO["firmware_started"] = True
+            self._send(200, {"started": True, "reboot_pending": True})
+            return
+        if path == "/api/selfupdate":
+            ESTADO["selfupdate_started"] = True
+            self._send(200, {"phase": "restarting", "progress": 100})
             return
         if path == "/api/reboot":
             self._send(200, {"started": True})

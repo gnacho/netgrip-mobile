@@ -87,6 +87,28 @@ class SystemActionsViewModelTest {
         assertFalse(viewModel.settings.value.actionBusy)
     }
 
+    @Test
+    fun elFirmwareSeConfirmaCuandoElRouterVuelve() = runSystemTest(meFailures = 1, firmware = true) { probe, viewModel ->
+        viewModel.installFirmware()
+        probe.pumpUntilIdle()
+
+        val post = probe.calls.first { it.path == "/api/update" && it.method == "POST" }
+        assertEquals("""{"confirm":true}""", post.body)
+        assertEquals("El router ha vuelto tras el firmware", viewModel.settings.value.actionMessage)
+        assertFalse(viewModel.settings.value.firmwareRunning)
+    }
+
+    @Test
+    fun laActualizacionDelPanelUsaSuPropioEndpointYVuelve() = runSystemTest(meFailures = 1, selfUpdate = true) { probe, viewModel ->
+        viewModel.updateNetGrip()
+        probe.pumpUntilIdle()
+
+        val post = probe.calls.first { it.path == "/api/selfupdate" && it.method == "POST" }
+        assertEquals("""{"confirm":true}""", post.body)
+        assertEquals("El panel se ha actualizado y ha vuelto", viewModel.settings.value.actionMessage)
+        assertFalse(viewModel.settings.value.selfUpdateRunning)
+    }
+
     // ── helpers ────────────────────────────────────────────────────────────
 
     private class Call(val path: String, val method: String, val body: String)
@@ -108,13 +130,15 @@ class SystemActionsViewModelTest {
         unauthorizedAfterReboot: Boolean = false,
         passwordStatus: HttpStatusCode = HttpStatusCode.NoContent,
         passwordError: String = "",
+        firmware: Boolean = false,
+        selfUpdate: Boolean = false,
         block: suspend TestScope.(Probe, ShellViewModel) -> Unit,
     ) = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
             val probe = Probe(this)
             var meCount = 0
-            var rebooted = false
+            var started = false
             val config = MockEngineConfig()
             config.dispatcher = StandardTestDispatcher(testScheduler)
             config.addHandler { request: HttpRequestData ->
@@ -125,13 +149,13 @@ class SystemActionsViewModelTest {
                 val json = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
                 when {
                     path == "/api/reboot" -> {
-                        rebooted = true
+                        started = true
                         respond("""{"started":true}""", HttpStatusCode.OK, json)
                     }
                     path == "/api/me" -> {
                         meCount += 1
                         when {
-                            !rebooted -> respond("", HttpStatusCode.NoContent)
+                            !started -> respond("", HttpStatusCode.NoContent)
                             unauthorizedAfterReboot -> respond("", HttpStatusCode.Unauthorized)
                             alwaysDown -> respond("", HttpStatusCode.BadGateway)
                             meCount > meFailures -> respond("", HttpStatusCode.NoContent)
@@ -140,6 +164,15 @@ class SystemActionsViewModelTest {
                     }
                     path == "/api/password" ->
                         respond(passwordError, passwordStatus, json)
+                    path == "/api/update" && method == "POST" -> {
+                        started = true
+                        respond("""{"started":true,"reboot_pending":true}""", HttpStatusCode.OK, json)
+                    }
+                    path == "/api/selfupdate" && method == "POST" -> {
+                        started = true
+                        respond("""{"phase":"restarting","progress":100}""", HttpStatusCode.OK, json)
+                    }
+                    path == "/api/update" -> respond("{}", HttpStatusCode.OK, json)
                     path == "/api/board" -> respond("{}", HttpStatusCode.OK, json)
                     path == "/api/mode" -> respond("{}", HttpStatusCode.OK, json)
                     path == "/api/access" -> respond("{}", HttpStatusCode.OK, json)

@@ -22,6 +22,7 @@ import dev.gnacho.netgrip.data.dto.SelfUpdateDto
 import dev.gnacho.netgrip.data.dto.LedDto
 import dev.gnacho.netgrip.data.dto.LogEntryDto
 import dev.gnacho.netgrip.data.dto.SystemDto
+import dev.gnacho.netgrip.data.dto.UpdateCheckDto
 import dev.gnacho.netgrip.data.dto.WanDto
 import dev.gnacho.netgrip.data.dto.ConfirmWindowDto
 import dev.gnacho.netgrip.data.dto.RadioEditRequest
@@ -138,6 +139,10 @@ data class SettingsState(
     val access: AccessDto? = null,
     val mdns: MdnsDto? = null,
     val selfUpdate: SelfUpdateDto? = null,
+    /** Estado del firmware del router y progreso de la actualizacion. */
+    val firmware: UpdateCheckDto? = null,
+    val firmwareRunning: Boolean = false,
+    val selfUpdateRunning: Boolean = false,
     /** Acciones de sistema en curso (reinicio, contrasena). */
     val actionBusy: Boolean = false,
     val actionMessage: String? = null,
@@ -774,11 +779,17 @@ class ShellViewModel(
                 val access = async { api.access() }
                 val mdns = async { api.mdns() }
                 val update = async { api.selfUpdate() }
+                val firmware = async { api.updateCheck() }
                 merge(board.await()) { next = next.copy(board = it) }
                 merge(mode.await()) { next = next.copy(mode = it) }
                 merge(access.await()) { next = next.copy(access = it) }
                 merge(mdns.await()) { next = next.copy(mdns = it) }
                 merge(update.await()) { next = next.copy(selfUpdate = it) }
+                // Un router sin owut responde 502 en este check: no es un
+                // fallo de la pestana, la tarjeta lo explica.
+                (firmware.await() as? ApiResult.Ok)?.let { result ->
+                    next = next.copy(firmware = result.value)
+                }
             }
             _settings.value = next.copy(error = failure)
         }
@@ -849,6 +860,97 @@ class ShellViewModel(
         }
     }
 
+    /**
+     * POST /api/update. Antes de llamar, la UI ya comprobo que hay version
+     * nueva y que owut dice que se puede. Tras aceptar, el router se reinicia:
+     * se espera hasta 12 minutos a que vuelva.
+     */
+    fun installFirmware() {
+        if (_settings.value.actionBusy) return
+        viewModelScope.launch {
+            _settings.update { it.copy(actionBusy = true, firmwareRunning = true, actionMessage = null, actionError = null) }
+            when (val result = api.startFirmwareUpdate()) {
+                is ApiResult.Ok -> {
+                    _settings.update { it.copy(rebooting = true) }
+                    when (waitForRouter(attempts = FIRMWARE_ATTEMPTS, intervalMs = 5_000L)) {
+                        BootOutcome.Back -> {
+                            _settings.update {
+                                it.copy(
+                                    rebooting = false,
+                                    firmwareRunning = false,
+                                    actionBusy = false,
+                                    actionMessage = "El router ha vuelto tras el firmware",
+                                )
+                            }
+                            loadSettings()
+                        }
+                        BootOutcome.SessionLost -> {
+                            _settings.update { it.copy(rebooting = false, firmwareRunning = false, actionBusy = false) }
+                            _sessionExpired.value = true
+                        }
+                        BootOutcome.Timeout -> {
+                            _settings.update {
+                                it.copy(
+                                    rebooting = false,
+                                    firmwareRunning = false,
+                                    actionBusy = false,
+                                    actionError = "El router sigue sin responder. Un sysupgrade puede tardar " +
+                                        "varios minutos: vuelve a entrar cuando esté listo.",
+                                )
+                            }
+                        }
+                    }
+                }
+                else -> _settings.update {
+                    it.copy(actionBusy = false, firmwareRunning = false, actionError = failWith(result))
+                }
+            }
+        }
+    }
+
+    /** POST /api/selfupdate: descarga y reinicia el panel, sin tocar el router. */
+    fun updateNetGrip() {
+        if (_settings.value.actionBusy) return
+        viewModelScope.launch {
+            _settings.update { it.copy(actionBusy = true, selfUpdateRunning = true, actionMessage = null, actionError = null) }
+            when (val result = api.startSelfUpdate()) {
+                is ApiResult.Ok -> {
+                    _settings.update { it.copy(rebooting = true) }
+                    when (waitForRouter(attempts = SELF_UPDATE_ATTEMPTS, intervalMs = 2_000L)) {
+                        BootOutcome.Back -> {
+                            _settings.update {
+                                it.copy(
+                                    rebooting = false,
+                                    selfUpdateRunning = false,
+                                    actionBusy = false,
+                                    actionMessage = "El panel se ha actualizado y ha vuelto",
+                                )
+                            }
+                            loadSettings()
+                        }
+                        BootOutcome.SessionLost -> {
+                            _settings.update { it.copy(rebooting = false, selfUpdateRunning = false, actionBusy = false) }
+                            _sessionExpired.value = true
+                        }
+                        BootOutcome.Timeout -> {
+                            _settings.update {
+                                it.copy(
+                                    rebooting = false,
+                                    selfUpdateRunning = false,
+                                    actionBusy = false,
+                                    actionError = "El panel no ha vuelto todavía. Comprueba la conexión con el router.",
+                                )
+                            }
+                        }
+                    }
+                }
+                else -> _settings.update {
+                    it.copy(actionBusy = false, selfUpdateRunning = false, actionError = failWith(result))
+                }
+            }
+        }
+    }
+
     fun clearSettingsFeedback() {
         _settings.update { it.copy(actionMessage = null, actionError = null) }
     }
@@ -857,9 +959,12 @@ class ShellViewModel(
      * Sondeo de vuelta tras un reinicio: cada 3 s durante 3 minutos. Un 204
      * es que el router esta de vuelta, un 401 que perdio la sesion.
      */
-    private suspend fun waitForRouter(): BootOutcome {
-        repeat(REBOOT_ATTEMPTS) {
-            delay(REBOOT_INTERVAL_MS)
+    private suspend fun waitForRouter(
+        attempts: Int = REBOOT_ATTEMPTS,
+        intervalMs: Long = REBOOT_INTERVAL_MS,
+    ): BootOutcome {
+        repeat(attempts) {
+            delay(intervalMs)
             when (api.me()) {
                 is ApiResult.Ok -> return BootOutcome.Back
                 ApiResult.Unauthorized -> return BootOutcome.SessionLost
@@ -1106,5 +1211,11 @@ class ShellViewModel(
         /** 60 sondeos cada 3 s: tres minutos para que el router vuelva. */
         const val REBOOT_ATTEMPTS = 60
         const val REBOOT_INTERVAL_MS = 3_000L
+
+        /** Un sysupgrade puede tardar: 12 minutos de margen. */
+        const val FIRMWARE_ATTEMPTS = 144
+
+        /** El panel se reinicia en segundos. */
+        const val SELF_UPDATE_ATTEMPTS = 90
     }
 }
