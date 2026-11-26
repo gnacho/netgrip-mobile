@@ -15,6 +15,8 @@ import dev.gnacho.netgrip.data.dto.HistoryEntryDto
 import dev.gnacho.netgrip.data.dto.MdnsDto
 import dev.gnacho.netgrip.data.dto.ModeDto
 import dev.gnacho.netgrip.data.dto.SelfUpdateDto
+import dev.gnacho.netgrip.data.dto.LedDto
+import dev.gnacho.netgrip.data.dto.LogEntryDto
 import dev.gnacho.netgrip.data.dto.SystemDto
 import dev.gnacho.netgrip.data.dto.WanDto
 import dev.gnacho.netgrip.data.dto.WifiUiDto
@@ -84,6 +86,19 @@ data class PortsState(
     val ports: List<EthPortDto> = emptyList(),
 )
 
+/** Estado de la pestana Diagnostico. */
+data class DiagnosticsState(
+    val loading: Boolean = false,
+    val loaded: Boolean = false,
+    val error: String? = null,
+    val logs: List<LogEntryDto> = emptyList(),
+    /** Tamano del buffer completo, antes de filtrar. */
+    val logTotal: Int = 0,
+    val filter: String = "",
+    val ledsApplicable: Boolean = false,
+    val leds: List<LedDto> = emptyList(),
+)
+
 /** Estado de la pestana Ajustes. */
 data class SettingsState(
     val loading: Boolean = false,
@@ -121,6 +136,9 @@ class ShellViewModel(private val api: NetGripApi) : ViewModel() {
     private val _settings = MutableStateFlow(SettingsState())
     val settings: StateFlow<SettingsState> = _settings.asStateFlow()
 
+    private val _diagnostics = MutableStateFlow(DiagnosticsState())
+    val diagnostics: StateFlow<DiagnosticsState> = _diagnostics.asStateFlow()
+
     private val _sessionExpired = MutableStateFlow(false)
     val sessionExpired: StateFlow<Boolean> = _sessionExpired.asStateFlow()
 
@@ -128,6 +146,7 @@ class ShellViewModel(private val api: NetGripApi) : ViewModel() {
     private var clientsJob: Job? = null
     private var wifiJob: Job? = null
     private var portsJob: Job? = null
+    private var diagnosticsJob: Job? = null
     private var settingsJob: Job? = null
 
     fun ensurePanel() {
@@ -336,6 +355,43 @@ class ShellViewModel(private val api: NetGripApi) : ViewModel() {
         }
     }
 
+    fun ensureDiagnostics() {
+        if (_diagnostics.value.loaded || diagnosticsJob?.isActive == true) return
+        loadDiagnostics()
+    }
+
+    /** Recarga los logs con [filter] (texto, no regex) y el inventario de LEDs. */
+    fun loadDiagnostics(filter: String = _diagnostics.value.filter) {
+        if (diagnosticsJob?.isActive == true) return
+        diagnosticsJob = viewModelScope.launch {
+            _diagnostics.update { it.copy(loading = true, error = null, filter = filter) }
+            var next = _diagnostics.value.copy(loading = false, loaded = true)
+            var failure: String? = null
+            coroutineScope {
+                val logs = async { api.logs(filter = filter) }
+                val leds = async { api.leds() }
+                when (val result = logs.await()) {
+                    is ApiResult.Ok -> next = next.copy(logs = result.value.entries, logTotal = result.value.total)
+                    else -> {
+                        if (result == ApiResult.Unauthorized) _sessionExpired.value = true
+                        failure = failure ?: describe(result)
+                    }
+                }
+                when (val result = leds.await()) {
+                    is ApiResult.Ok -> next = next.copy(
+                        ledsApplicable = result.value.applicable,
+                        leds = result.value.leds,
+                    )
+                    else -> {
+                        if (result == ApiResult.Unauthorized) _sessionExpired.value = true
+                        failure = failure ?: describe(result)
+                    }
+                }
+            }
+            _diagnostics.value = next.copy(error = failure)
+        }
+    }
+
     fun ensurePorts() {
         if (_ports.value.loaded || portsJob?.isActive == true) return
         loadPorts()
@@ -395,6 +451,7 @@ class ShellViewModel(private val api: NetGripApi) : ViewModel() {
             ShellTab.CLIENTS -> loadClients()
             ShellTab.WIFI -> loadWifi()
             ShellTab.PORTS -> loadPorts()
+            ShellTab.DIAGNOSTICS -> loadDiagnostics()
             ShellTab.SETTINGS -> loadSettings()
         }
     }

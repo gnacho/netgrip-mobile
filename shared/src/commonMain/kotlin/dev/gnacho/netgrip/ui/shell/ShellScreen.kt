@@ -76,6 +76,7 @@ private val Navigation = listOf(
     NavEntry(ShellTab.CLIENTS, NetGripIcons.Clients, "Tu red"),
     NavEntry(ShellTab.WIFI, NetGripIcons.Wifi, "Tu red"),
     NavEntry(ShellTab.PORTS, NetGripIcons.Ports, "Tu red"),
+    NavEntry(ShellTab.DIAGNOSTICS, NetGripIcons.Diagnostics, "Sistema"),
     NavEntry(ShellTab.SETTINGS, NetGripIcons.Settings, "Sistema"),
 )
 
@@ -177,6 +178,7 @@ fun ShellScreen(
                     ShellTab.PANEL -> PanelScreen(viewModel)
                     ShellTab.CLIENTS -> ClientsScreen(viewModel)
                     ShellTab.WIFI -> WifiScreen(viewModel)
+                    ShellTab.DIAGNOSTICS -> DiagnosticsScreen(viewModel)
                     ShellTab.PORTS -> PortsScreen(viewModel)
                     ShellTab.SETTINGS -> SettingsScreen(
                         viewModel = viewModel,
