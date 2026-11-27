@@ -35,6 +35,8 @@ class FleetRulesTest {
         assertEquals(2, summary.reachable)
         assertEquals(1, summary.updates)
         assertEquals(1, summary.failing)
+        // Un nodo sin comprobar no es un nodo que no responde.
+        assertEquals(1, summary.unchecked)
     }
 
     @Test

@@ -18,6 +18,11 @@ The three flags answer different questions and the app keeps them apart: no USB
 ports, nothing plugged in, and a kernel without `usb-storage` are three different
 sentences. The last one cannot be fixed from the app and says so.
 
+**Usage is only painted when the router measured it.** A disk mounted by hand
+arrives with its size but `used_bytes` and `free_bytes` at zero, and the app says
+"El router no informa del uso de este disco" instead of printing `0 B` and
+"quedan 0 B", which would state something nobody measured.
+
 ## Mounting
 
 `POST /api/storage/mount` takes `device`, `target` and `read_only`.

@@ -66,16 +66,21 @@ fun PoliciesCard(
     state: PoliciesState,
     onOpen: (ClientDto) -> Unit,
 ) {
+    var showAll by remember { mutableStateOf(false) }
     val rows = remember(clients, names) {
         clients.sortedBy { names[it.mac.lowercase()] ?: it.name.ifBlank { it.ip.orEmpty() } }
     }
+    val withPolicy = remember(rows, state.quotas, state.qos, state.parental) {
+        rows.filter { policyPills(it, state).isNotEmpty() }
+    }
+    val visible = if (showAll) rows else withPolicy
     NetGripCard(
         eyebrow = "Políticas",
         title = "Cuotas, velocidad y horarios",
         subtitle = when {
             state.loading && !state.loaded -> "Leyendo"
             rows.isEmpty() -> "Sin dispositivos"
-            else -> "${rows.size} dispositivos"
+            else -> "${rows.size} dispositivos · ${withPolicy.size} con límites"
         },
         icon = NetGripIcons.Shield,
     ) {
@@ -87,7 +92,14 @@ fun PoliciesCard(
             )
             return@NetGripCard
         }
-        rows.forEach { client ->
+        if (visible.isEmpty()) {
+            Text(
+                "Ningún dispositivo tiene cuota, límite de velocidad ni horario.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        visible.forEach { client ->
             val mac = client.mac.lowercase()
             Column {
                 Row(
@@ -123,6 +135,15 @@ fun PoliciesCard(
                 }
                 Spacer(Modifier.height(4.dp))
             }
+        }
+        TextButton(onClick = { showAll = !showAll }) {
+            Text(
+                if (showAll) {
+                    "Ver solo los que tienen límites"
+                } else {
+                    "Ver los ${rows.size} dispositivos"
+                },
+            )
         }
     }
 }

@@ -8,6 +8,8 @@ data class FleetSummary(
     val reachable: Int = 0,
     val updates: Int = 0,
     val failing: Int = 0,
+    /** Routers que el panel nunca comprobó: no es lo mismo que no responder. */
+    val unchecked: Int = 0,
 )
 
 /**
@@ -45,6 +47,7 @@ object FleetRules {
         reachable = nodes.count { it.reachable },
         updates = nodes.count { it.updateAvailable && it.reachable },
         failing = nodes.count { !it.reachable && !it.error.isNullOrBlank() },
+        unchecked = nodes.count { !it.reachable && it.error.isNullOrBlank() },
     )
 
     /**

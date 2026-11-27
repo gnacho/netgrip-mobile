@@ -1223,6 +1223,13 @@ class ShellViewModel(
                 }
             }
             _fleet.value = next.copy(error = failure)
+            // El estado de la flota vive en memoria del panel: tras un reinicio
+            // llega vacío. Se comprueba una vez en vez de dejar todo en "sin
+            // datos", igual que hace la página del panel (#760).
+            val loaded = _fleet.value
+            if (loaded.nodes.isNotEmpty() && loaded.nodes.all { !it.reachable && it.error.isNullOrBlank() }) {
+                checkAllFleet()
+            }
         }
     }
 
