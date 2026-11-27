@@ -60,6 +60,10 @@ the MAC. If those two reads fail the tab still paints, with IPs and MACs.
 - Both `quotas.applicable` and `nftqos.applicable` are false outside the gateway;
   the sheet explains it and disables the buttons instead of sending a write that
   can only fail.
+- **The card lists only the devices that already have a policy**, with a count
+  and a button to expand to the whole client list when a new one has to be
+  created. A router can have fifty clients: listing them all pushed the DPI and
+  the timeline cards off the screen.
 
 ## Partial failures
 
