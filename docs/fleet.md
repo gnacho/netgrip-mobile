@@ -24,6 +24,11 @@ state it recorded.
 `reachable: false` and no `error`, which the app paints as "Sin datos", not as
 "no responde": an unchecked router is not a broken one.
 
+That cache lives in the panel's memory, so after it restarts every node comes
+back without a state. The tab then runs one `check-all` by itself, the same way
+the panel page does, and the header counts those nodes as "sin comprobar"
+instead of "no responden" while it waits.
+
 ## Adopting a peer
 
 `POST /api/fleet/adopt` takes `id`, `name`, `address` and `password`. The panel

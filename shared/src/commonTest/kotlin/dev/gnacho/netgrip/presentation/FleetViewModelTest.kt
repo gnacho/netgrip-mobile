@@ -45,6 +45,14 @@ private const val CHECK_ALL_JSON = """{"nodes":[
 private const val PEERS_JSON = """{"peers":[{"id":"nuevo","name":"Salon","version":"0.82.0",
  "address":"192.168.1.77","port":8080,"seen_at":"2026-11-26T20:10:00Z"}]}"""
 
+/** Tras reiniciar el panel la cache de la flota llega vacia: sin estado. */
+private const val NO_STATE_FLEET = """{"nodes":[
+ {"id":"rt3","name":"rt3","address":"192.168.1.3:8080"}]}"""
+
+private const val RT3_CHECKED = """{"nodes":[
+ {"id":"rt3","name":"rt3","address":"192.168.1.3:8080","reachable":true,
+  "current_version":"v0.82.0","latest_version":"v0.82.0","update_available":false}]}"""
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class FleetViewModelTest {
 
@@ -127,6 +135,28 @@ class FleetViewModelTest {
     }
 
     @Test
+    fun loadingTheFleetChecksItWhenNoNodeHasAState() = runFleetTest(
+        fleet = NO_STATE_FLEET,
+        checkAll = RT3_CHECKED,
+    ) { engine, viewModel ->
+        viewModel.loadFleet()
+        advanceUntilIdle()
+        // La cache del panel vive en memoria: tras su reinicio llega vacia y
+        // la app pregunta una vez en vez de dejar todo en "sin datos".
+        assertEquals(listOf("/api/fleet/check-all"), engine.writes.map { it.path })
+        assertEquals("rt3", viewModel.fleet.value.nodes.single().id)
+        assertEquals(true, viewModel.fleet.value.nodes.single().reachable)
+        assertEquals("v0.82.0", viewModel.fleet.value.nodes.single().currentVersion)
+    }
+
+    @Test
+    fun aCheckedFleetIsNotCheckedAgainOnLoad() = runFleetTest { engine, viewModel ->
+        viewModel.loadFleet()
+        advanceUntilIdle()
+        assertTrue(engine.writes.isEmpty())
+    }
+
+    @Test
     fun aSuccessfulAdoptionHandsTheRequestToTheCaller() = runFleetTest { _, viewModel ->
         viewModel.loadFleet()
         advanceUntilIdle()
@@ -172,6 +202,8 @@ class FleetViewModelTest {
     private fun runFleetTest(
         failAdopt: Boolean = false,
         fleetStatus: HttpStatusCode = HttpStatusCode.OK,
+        fleet: String = FLEET_JSON,
+        checkAll: String = CHECK_ALL_JSON,
         block: suspend TestScope.(Probe, ShellViewModel) -> Unit,
     ) = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
@@ -192,7 +224,7 @@ class FleetViewModelTest {
                     val discoveryAnswer = """{"enabled":${!body.contains("\"enabled\":false")}}"""
                     val (payload, status) = when (path) {
                         "/api/fleet/check" -> CHECK_JSON to HttpStatusCode.OK
-                        "/api/fleet/check-all" -> CHECK_ALL_JSON to HttpStatusCode.OK
+                        "/api/fleet/check-all" -> checkAll to HttpStatusCode.OK
                         "/api/fleet/adopt" ->
                             """{"status":"adopted"}""" to
                                 if (failAdopt) HttpStatusCode.BadRequest else HttpStatusCode.OK
@@ -203,7 +235,7 @@ class FleetViewModelTest {
                 } else {
                     probe.reads += path
                     val (payload, status) = when (path) {
-                        "/api/fleet" -> FLEET_JSON to fleetStatus
+                        "/api/fleet" -> fleet to fleetStatus
                         "/api/fleet/discovered" -> PEERS_JSON to HttpStatusCode.OK
                         "/api/fleet/discovery-config" -> """{"enabled":true}""" to HttpStatusCode.OK
                         else -> null to HttpStatusCode.NotFound

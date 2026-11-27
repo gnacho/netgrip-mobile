@@ -144,6 +144,7 @@ private fun SummaryCard(
         title = "Routers gestionados juntos",
         subtitle = when {
             summary.total == 0 -> "Sin routers"
+            summary.unchecked > 0 -> "${summary.unchecked} sin comprobar"
             summary.failing > 0 -> "${summary.failing} sin responder"
             summary.updates > 0 -> "${summary.updates} con actualización"
             else -> "${summary.reachable} de ${summary.total} responden"
