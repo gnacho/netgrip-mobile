@@ -196,7 +196,7 @@ private fun StorageDeviceCard(device: StorageDeviceDto, state: StorageState, vie
             }
             if (device.managed) Pill("Del panel", Tone.NEUTRAL)
         }
-        if (device.sizeBytes > 0) {
+        if (device.sizeBytes > 0 && StorageRules.hasUsage(device)) {
             Spacer(Modifier.height(8.dp))
             PercentBar(fraction = StorageRules.usedPercent(device) / 100f)
             Spacer(Modifier.height(4.dp))
@@ -204,6 +204,13 @@ private fun StorageDeviceCard(device: StorageDeviceDto, state: StorageState, vie
                 "${Formats.bytes(device.usedBytes)} de ${Formats.bytes(device.sizeBytes)} · " +
                     "quedan ${Formats.bytes(device.freeBytes)}",
                 style = MonoStyle,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else if (device.sizeBytes > 0) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "El router no informa del uso de este disco.",
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }

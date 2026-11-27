@@ -48,4 +48,12 @@ object StorageRules {
         if (device.sizeBytes <= 0) return 0
         return ((device.usedBytes * 100.0) / device.sizeBytes).toInt().coerceIn(0, 100)
     }
+
+    /**
+     * El router informa del uso solo cuando lo mide. Un disco montado a mano
+     * llega con tamano y con used/free a cero: pintar "0 B" seria afirmar algo
+     * que no midio.
+     */
+    fun hasUsage(device: StorageDeviceDto): Boolean =
+        device.usedBytes > 0 || device.freeBytes > 0
 }

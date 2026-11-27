@@ -49,6 +49,15 @@ class StorageRulesTest {
     }
 
     @Test
+    fun usageIsOnlyShownWhenTheRouterReportedIt() {
+        assertTrue(StorageRules.hasUsage(StorageDeviceDto(sizeBytes = 100, usedBytes = 10)))
+        assertTrue(StorageRules.hasUsage(StorageDeviceDto(sizeBytes = 100, freeBytes = 90)))
+        // Un disco montado a mano llega con tamano y sin uso medido.
+        assertTrue(!StorageRules.hasUsage(StorageDeviceDto(sizeBytes = 100)))
+        assertEquals(0, StorageRules.usedPercent(StorageDeviceDto(sizeBytes = 100)))
+    }
+
+    @Test
     fun usageIsAPercentageWithGuards() {
         assertEquals(50, StorageRules.usedPercent(StorageDeviceDto(sizeBytes = 100, usedBytes = 50)))
         assertEquals(0, StorageRules.usedPercent(StorageDeviceDto(sizeBytes = 0, usedBytes = 10)))
