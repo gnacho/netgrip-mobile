@@ -32,7 +32,7 @@ A Fleet tab lists the routers the panel manages together, checks one or all of t
 
 A Storage tab lists the disks the router sees and mounts or unmounts them: the mount dialog takes the mount point and a read-only switch, and only mounts created from the panel can be unmounted, so a hand-made one is shown without a button. See [docs/storage.md](docs/storage.md).
 
-356 Android host tests and the debug APK build pass. Emulator tests are done against a mock API. Validation against a real router is still pending.
+359 Android host tests and the debug APK build pass. Emulator tests are done against a mock API, and the traffic, fleet and storage tabs have been checked against a real AX9000 through a local bridge that answered the login with a panel session: everything they show came from the router.
 
 The shell is described in [docs/readonly-shell.md](docs/readonly-shell.md), the client writes in [docs/client-writes.md](docs/client-writes.md), the WiFi writes in [docs/wifi-writes.md](docs/wifi-writes.md), the traffic readings in [docs/traffic.md](docs/traffic.md), the system actions in [docs/system-actions.md](docs/system-actions.md), remote access in [docs/remote-access.md](docs/remote-access.md) and the network and device handling in [docs/multi-network.md](docs/multi-network.md).
 

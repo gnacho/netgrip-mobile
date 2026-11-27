@@ -32,7 +32,7 @@ Una pestaña de Flota lista los routers que el panel gestiona juntos, comprueba 
 
 Una pestaña de Almacenamiento lista los discos que ve el router y los monta o desmonta: el diálogo de montaje pide el punto de montaje y un interruptor de solo lectura, y solo se desmontan los montajes creados desde el panel, así que uno hecho a mano se muestra sin botón. Detalle en [docs/storage.md](docs/storage.md).
 
-Pasan 356 tests de host de Android y la compilación del APK de depuración. Las pruebas en emulador están hechas contra una API simulada. Falta la validación contra un router real.
+Pasan 359 tests de host de Android y la compilación del APK de depuración. Las pruebas en emulador están hechas contra una API simulada, y las pestañas de tráfico, flota y almacenamiento se han comprobado contra un AX9000 real a través de un puente local que respondía al login con una sesión del panel: todo lo que muestran venía del router.
 
 El shell está descrito en [docs/readonly-shell.md](docs/readonly-shell.md), las escrituras en [docs/client-writes.md](docs/client-writes.md), las de WiFi en [docs/wifi-writes.md](docs/wifi-writes.md), las lecturas de tráfico en [docs/traffic.md](docs/traffic.md), las de sistema en [docs/system-actions.md](docs/system-actions.md), el acceso remoto en [docs/remote-access.md](docs/remote-access.md) y las redes y dispositivos en [docs/multi-network.md](docs/multi-network.md).
 
